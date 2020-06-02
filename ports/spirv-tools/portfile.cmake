@@ -1,78 +1,40 @@
-# Common Ambient Variables:
-#   VCPKG_ROOT_DIR = <C:\path\to\current\vcpkg>
-#   TARGET_TRIPLET is the current triplet (x86-windows, etc)
-#   PORT is the current port name (zlib, etc)
-#   CURRENT_BUILDTREES_DIR = ${VCPKG_ROOT_DIR}\buildtrees\${PORT}
-#   CURRENT_PACKAGES_DIR  = ${VCPKG_ROOT_DIR}\packages\${PORT}_${TARGET_TRIPLET}
-#
 
-include(vcpkg_common_functions)
-find_program(GIT git)
+vcpkg_check_linkage(ONLY_STATIC_LIBRARY)
 
-set(SOURCE_PATH ${CURRENT_BUILDTREES_DIR}/src)
+vcpkg_from_github(
+    OUT_SOURCE_PATH SOURCE_PATH
+    REPO KhronosGroup/SPIRV-Tools
+    REF v2020.1
+    SHA512 edd434e06cba44c402900684b8fea16c394f80951ff993b3962617a21630d2d8ff9be9a5203bc8eb9b402e9cafe8c68f13099cbc1eaf66a546df08cb43668c46
+    PATCHES
+        comment-distutils.patch
+        cmake-install.patch
+        install-config-typo.patch
+)
 
-set(GIT_URL "https://github.com/KhronosGroup/SPIRV-Tools.git")
-set(GIT_REF "f72189c249ba143c6a89a4cf1e7d53337b2ddd40")
-
-if(NOT EXISTS "${DOWNLOADS}/spirv-tools.git")
-    message(STATUS "Cloning")
-    vcpkg_execute_required_process(
-        COMMAND ${GIT} clone --bare ${GIT_URL} ${DOWNLOADS}/spirv-tools.git
-        WORKING_DIRECTORY ${DOWNLOADS}
-        LOGNAME clone
-    )
-endif()
-
-if(NOT EXISTS "${SOURCE_PATH}/.git")
-    message(STATUS "Adding worktree and patching")
-    file(MAKE_DIRECTORY ${CURRENT_BUILDTREES_DIR})
-    vcpkg_execute_required_process(
-        COMMAND ${GIT} worktree add -f --detach ${SOURCE_PATH} ${GIT_REF}
-        WORKING_DIRECTORY ${DOWNLOADS}/spirv-tools.git
-        LOGNAME worktree
-    )
-    message(STATUS "Patching")
-endif()
-
-set(SPIRVHEADERS_GIT_URL "https://github.com/KhronosGroup/SPIRV-Headers.git")
-set(SPIRVHEADERS_GIT_REF "bd47a9abaefac00be692eae677daed1b977e625c")
-
-if(NOT EXISTS "${DOWNLOADS}/SPIRV-Headers.git")
-    message(STATUS "Cloning")
-    vcpkg_execute_required_process(
-        COMMAND ${GIT} clone --bare ${SPIRVHEADERS_GIT_URL} ${DOWNLOADS}/SPIRV-Headers.git
-        WORKING_DIRECTORY ${DOWNLOADS}
-        LOGNAME clone
-    )
-endif()
-
-if(NOT EXISTS "${SOURCE_PATH}/external/spirv-headers/.git")
-    message(STATUS "Adding worktree and patching")
-    file(MAKE_DIRECTORY ${CURRENT_BUILDTREES_DIR})
-    vcpkg_execute_required_process(
-        COMMAND ${GIT} worktree add -f --detach ${SOURCE_PATH}/external/spirv-headers ${SPIRVHEADERS_GIT_REF}
-        WORKING_DIRECTORY ${DOWNLOADS}/SPIRV-Headers.git
-        LOGNAME worktree
-    )
-endif()
-
-set(VCPKG_LIBRARY_LINKAGE "static")
+vcpkg_find_acquire_program(PYTHON3)
+get_filename_component(PYTHON3_DIR "${PYTHON3}" DIRECTORY)
+vcpkg_add_to_path("${PYTHON3_DIR}")
 
 vcpkg_configure_cmake(
-    SOURCE_PATH "${CURRENT_BUILDTREES_DIR}/src"
-    # OPTIONS -DUSE_THIS_IN_ALL_BUILDS=1 -DUSE_THIS_TOO=2
-    # OPTIONS_RELEASE -DOPTIMIZE=1
-    # OPTIONS_DEBUG -DDEBUGGABLE=1
+    SOURCE_PATH ${SOURCE_PATH}
+    PREFER_NINJA
+    OPTIONS
+        -DSPIRV-Headers_SOURCE_DIR=${VCPKG_ROOT_DIR}/installed/${TARGET_TRIPLET}
+        -DSPIRV_WERROR=OFF
+        -DENABLE_SPIRV_TOOLS_INSTALL=ON
 )
 
 vcpkg_install_cmake()
+vcpkg_fixup_cmake_targets(CONFIG_PATH share/SPIRV-Tools TARGET_PATH share/SPIRV-Tools) # the directory name is capitalized as opposed to the package name
+vcpkg_fixup_cmake_targets(CONFIG_PATH share/SPIRV-Tools-link TARGET_PATH share/SPIRV-Tools-link)
+vcpkg_fixup_cmake_targets(CONFIG_PATH share/SPIRV-Tools-opt TARGET_PATH share/SPIRV-Tools-opt)
+vcpkg_fixup_cmake_targets(CONFIG_PATH share/SPIRV-Tools-reduce TARGET_PATH share/SPIRV-Tools-reduce)
 
-file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/debug/include)
-file(GLOB EXES "${CURRENT_PACKAGES_DIR}/bin/*.exe")
-file(COPY ${EXES} DESTINATION ${CURRENT_PACKAGES_DIR}/tools)
-file(REMOVE ${EXES})
-file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/bin ${CURRENT_PACKAGES_DIR}/debug/bin)
+file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/bin") # only static linkage, i.e. no need to preserve .dll/.so files
+file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/include")
+file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/share")
+file(MAKE_DIRECTORY "${CURRENT_PACKAGES_DIR}/tools")
+file(RENAME "${CURRENT_PACKAGES_DIR}/bin" "${CURRENT_PACKAGES_DIR}/tools/${PORT}")
 
-# Handle copyright
-file(COPY ${SOURCE_PATH}/LICENSE DESTINATION ${CURRENT_PACKAGES_DIR}/share/spirv-tools)
-file(RENAME ${CURRENT_PACKAGES_DIR}/share/spirv-tools/LICENSE ${CURRENT_PACKAGES_DIR}/share/spirv-tools/copyright)
+file(INSTALL "${SOURCE_PATH}/LICENSE" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}" RENAME copyright)

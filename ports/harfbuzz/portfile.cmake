@@ -1,39 +1,60 @@
-include(vcpkg_common_functions)
-set(SOURCE_PATH ${CURRENT_BUILDTREES_DIR}/src/harfbuzz-1.4.6)
-vcpkg_download_distfile(ARCHIVE
-    URLS "https://github.com/behdad/harfbuzz/releases/download/1.4.6/harfbuzz-1.4.6.tar.bz2"
-    FILENAME "harfbuzz-1.4.6.tar.bz2"
-    SHA512 aade3902adadf3a8339ba1d05279e639da7cb53981adc64e2a2d32a5d49335a6a9782a62cdf80beca569ec8a639792bf0368c0b6ecad08f35bc85878678aa096
+vcpkg_from_github(
+    OUT_SOURCE_PATH SOURCE_PATH
+    REPO harfbuzz/harfbuzz
+    REF 2.6.6
+    SHA512 3ddf3e6eccf28ca1441544f0b67e243c6a85a32122bfc0f8092b3cc465b20a25aa3cb72404070d2627b9e204f86412c3bfb9aaca272c5492d8448facc1971a7d
+    HEAD_REF master
+    PATCHES
+        0001-fix-cmake-export.patch
+        0002-fix-uwp-build.patch
+        0003-remove-broken-test.patch
+        # This patch is required for propagating the full list of static dependencies from freetype
+        find-package-freetype-2.patch
+        # This patch is required for propagating the full list of dependencies from glib
+        glib-cmake.patch
 )
-vcpkg_extract_source_archive(${ARCHIVE})
 
-vcpkg_apply_patches(
-    SOURCE_PATH ${CURRENT_BUILDTREES_DIR}/src/
-    PATCHES "${CMAKE_CURRENT_LIST_DIR}/0001-fix-uwp-build.patch"
-)
+file(READ ${SOURCE_PATH}/CMakeLists.txt _contents)
 
-if(VCPKG_TARGET_ARCHITECTURE STREQUAL "arm" OR VCPKG_CMAKE_SYSTEM_NAME STREQUAL "WindowsStore")
-    SET(HAVE_GLIB "OFF")
-    SET(BUILTIN_UCDN "ON")
-else()
-    SET(HAVE_GLIB "ON")
-    SET(BUILTIN_UCDN "OFF")
+if("${_contents}" MATCHES "include \\(FindFreetype\\)")
+    message(FATAL_ERROR "Harfbuzz's cmake must not directly include() FindFreetype.")
 endif()
+
+if("${_contents}" MATCHES "find_library\\(GLIB_LIBRARIES")
+    message(FATAL_ERROR "Harfbuzz's cmake must not directly find_library() glib.")
+endif()
+
+vcpkg_check_features(OUT_FEATURE_OPTIONS FEATURE_OPTIONS
+    icu         HB_HAVE_ICU
+    graphite2   HB_HAVE_GRAPHITE2
+    glib        HB_HAVE_GLIB
+)
 
 vcpkg_configure_cmake(
     SOURCE_PATH ${SOURCE_PATH}
     PREFER_NINJA
-    OPTIONS
+    OPTIONS ${FEATURE_OPTIONS}
         -DHB_HAVE_FREETYPE=ON
-        -DHB_HAVE_GLIB=${HAVE_GLIB}
-        -DHB_BUILTIN_UCDN=${BUILTIN_UCDN}
+        -DHB_BUILD_TESTS=OFF
     OPTIONS_DEBUG
         -DSKIP_INSTALL_HEADERS=ON
 )
 
 vcpkg_install_cmake()
+vcpkg_fixup_cmake_targets()
+
 vcpkg_copy_pdbs()
 
+if ("glib" IN_LIST FEATURES)
+    # Propagate dependency on glib downstream
+    file(READ "${CURRENT_PACKAGES_DIR}/share/harfbuzz/harfbuzzConfig.cmake" _contents)
+    file(WRITE "${CURRENT_PACKAGES_DIR}/share/harfbuzz/harfbuzzConfig.cmake" "
+include(CMakeFindDependencyMacro)
+find_dependency(unofficial-glib CONFIG)
+    
+${_contents}
+")
+endif()
+
 # Handle copyright
-file(COPY ${SOURCE_PATH}/COPYING DESTINATION ${CURRENT_PACKAGES_DIR}/share/harfbuzz)
-file(RENAME ${CURRENT_PACKAGES_DIR}/share/harfbuzz/COPYING ${CURRENT_PACKAGES_DIR}/share/harfbuzz/copyright)
+file(INSTALL ${SOURCE_PATH}/COPYING DESTINATION ${CURRENT_PACKAGES_DIR}/share/${PORT} RENAME copyright)

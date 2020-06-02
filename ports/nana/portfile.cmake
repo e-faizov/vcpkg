@@ -1,29 +1,36 @@
-if (VCPKG_LIBRARY_LINKAGE STREQUAL dynamic)
-    message(STATUS "Warning: Dynamic building not supported. Building static.")
-    set(VCPKG_LIBRARY_LINKAGE static)
+vcpkg_check_linkage(ONLY_STATIC_LIBRARY)
+
+if(VCPKG_CMAKE_SYSTEM_NAME AND NOT VCPKG_TARGET_IS_UWP)
+    message(WARNING "You will need to install Xorg dependencies to use nana:\napt install libx11-dev libxft-dev libxcursor-dev\n")
 endif()
 
-include(vcpkg_common_functions)
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO cnjinhao/nana
-    REF v1.5.4
-    SHA512 54d8d06a7792c7c626793f0c5f769884d7af78950a1df7d543f13bbb6de5ae35b51130a150438faa1c3c53dfea29fad6d12b94c535c264aac893325b244c6e0a
+    REF 38cdf4779456ba697d7da863f7c623e25d30f650 # v1.7.2
+    SHA512 0ad15984ce6ef94b4f92b2a87649c0e247850a602a8f48645fd882ed5dddd047a168c319c741b2783218ce467f8d0ac790010717cffc54cb1716b105ec042798
     HEAD_REF develop
+    PATCHES
+        fix-build-error.patch
+        fix-addstdexcept.patch
 )
+
+file(COPY ${CMAKE_CURRENT_LIST_DIR}/CMakeLists.txt DESTINATION ${SOURCE_PATH})
+file(COPY ${CMAKE_CURRENT_LIST_DIR}/config.cmake.in DESTINATION ${SOURCE_PATH})
 
 vcpkg_configure_cmake(
     SOURCE_PATH ${SOURCE_PATH}
     PREFER_NINJA
     OPTIONS
-        -DMSVC_USE_STATIC_RUNTIME=OFF # dont override our settings
-        -DNANA_CMAKE_ENABLE_PNG=ON
-        -DNANA_CMAKE_ENABLE_JPEG=ON
+        -DNANA_ENABLE_PNG=ON
+        -DNANA_ENABLE_JPEG=ON
     OPTIONS_DEBUG
-        -DNANA_CMAKE_INSTALL_INCLUDES=OFF)
+        -DNANA_INSTALL_HEADERS=OFF)
 
 vcpkg_install_cmake()
+
+vcpkg_fixup_cmake_targets(CONFIG_PATH share/unofficial-nana TARGET_PATH share/unofficial-nana)
+
 vcpkg_copy_pdbs()
 
-file(COPY ${SOURCE_PATH}/LICENSE DESTINATION ${CURRENT_PACKAGES_DIR}/share/nana)
-file(RENAME ${CURRENT_PACKAGES_DIR}/share/nana/LICENSE ${CURRENT_PACKAGES_DIR}/share/nana/copyright)
+file(INSTALL ${SOURCE_PATH}/LICENSE DESTINATION ${CURRENT_PACKAGES_DIR}/share/${PORT} RENAME copyright)

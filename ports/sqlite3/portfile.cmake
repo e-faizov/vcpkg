@@ -1,32 +1,48 @@
-include(vcpkg_common_functions)
-
-set(SQLITE_VERSION 3190100)
-set(SQLITE_HASH 14064707d9ca029131ec92863026748e184ad4d6ca9d25e941fc254d9ad24f1451fc5fae6516603a420925aab1736e3fb92085f03d8dc47ec913839e158652c4)
-set(SOURCE_PATH ${CURRENT_BUILDTREES_DIR}/src/sqlite-amalgamation-${SQLITE_VERSION})
+set(SQLITE_VERSION 3320000)
+set(SQLITE_HASH cf176859dfe5b6b92f02c8408faf3389fba0bd441308dea058085e031c45ab28377ce5ae519c48efe0ae51a16d4242e8d00461229ed099ee5cc2741a0f32ecd4 )
 
 vcpkg_download_distfile(ARCHIVE
-    URLS "https://sqlite.org/2017/sqlite-amalgamation-${SQLITE_VERSION}.zip"
+    URLS "https://sqlite.org/2020/sqlite-amalgamation-${SQLITE_VERSION}.zip"
     FILENAME "sqlite-amalgamation-${SQLITE_VERSION}.zip"
-    SHA512 ${SQLITE_HASH})
-vcpkg_extract_source_archive(${ARCHIVE})
+    SHA512 ${SQLITE_HASH}
+)
+
+vcpkg_extract_source_archive_ex(
+    OUT_SOURCE_PATH SOURCE_PATH
+    ARCHIVE ${ARCHIVE}
+    REF ${SQLITE_VERSION}
+    PATCHES fix-arm-uwp.patch
+)
 
 file(COPY ${CMAKE_CURRENT_LIST_DIR}/CMakeLists.txt DESTINATION ${SOURCE_PATH})
+
+vcpkg_check_features(OUT_FEATURE_OPTIONS FEATURE_OPTIONS
+    INVERTED_FEATURES
+    tool SQLITE3_SKIP_TOOLS
+)
 
 vcpkg_configure_cmake(
     SOURCE_PATH ${SOURCE_PATH}
     PREFER_NINJA
-    OPTIONS
-        -DSOURCE=${SOURCE_PATH}
-        -DVCPKG_CMAKE_SYSTEM_NAME=${VCPKG_CMAKE_SYSTEM_NAME}
+    OPTIONS ${FEATURE_OPTIONS}
+    OPTIONS_DEBUG
+        -DSQLITE3_SKIP_TOOLS=ON
 )
-vcpkg_build_cmake()
-vcpkg_install_cmake()
 
-file(READ ${CURRENT_PACKAGES_DIR}/debug/share/sqlite3/sqlite3Config-debug.cmake SQLITE3_DEBUG_CONFIG)
-string(REPLACE "\${_IMPORT_PREFIX}" "\${_IMPORT_PREFIX}/debug" SQLITE3_DEBUG_CONFIG "${SQLITE3_DEBUG_CONFIG}")
-file(WRITE ${CURRENT_PACKAGES_DIR}/share/sqlite3/sqlite3Config-debug.cmake "${SQLITE3_DEBUG_CONFIG}")
+vcpkg_install_cmake()
+vcpkg_fixup_cmake_targets()
 
 file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/debug/share)
 
-file(WRITE ${CURRENT_PACKAGES_DIR}/share/sqlite3/copyright "SQLite is in the Public Domain.\nhttp://www.sqlite.org/copyright.html\n")
+if(NOT SQLITE3_SKIP_TOOLS AND EXISTS ${CURRENT_PACKAGES_DIR}/tools/sqlite3-bin${VCPKG_HOST_EXECUTABLE_SUFFIX})
+    file(RENAME ${CURRENT_PACKAGES_DIR}/tools/sqlite3-bin${VCPKG_HOST_EXECUTABLE_SUFFIX} ${CURRENT_PACKAGES_DIR}/tools/sqlite3${VCPKG_HOST_EXECUTABLE_SUFFIX})
+endif()
+
+configure_file(
+    ${CMAKE_CURRENT_LIST_DIR}/sqlite3-config.in.cmake
+    ${CURRENT_PACKAGES_DIR}/share/sqlite3/sqlite3-config.cmake
+    @ONLY
+)
+
+file(WRITE ${CURRENT_PACKAGES_DIR}/share/${PORT}/copyright "SQLite is in the Public Domain.\nhttp://www.sqlite.org/copyright.html\n")
 vcpkg_copy_pdbs()

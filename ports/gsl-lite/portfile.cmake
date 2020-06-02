@@ -1,18 +1,28 @@
-include(vcpkg_common_functions)
-
-set(GSL_LITE_VERSION v0.24.0)
-
-vcpkg_download_distfile(HEADER
-    URLS "https://github.com/martinmoene/gsl-lite/releases/download/${GSL_LITE_VERSION}/gsl-lite.h"
-    FILENAME "gsl-lite-${GSL_LITE_VERSION}.h"
-    SHA512 fbe93aadf25feb488c2190e867933f198adb92a5a87e6bee8a8e1d6f0185829953348cb67eb52f70945d5a3cdb1f4d7403cfd950ab808b215ce445c37e9d9daf
+vcpkg_from_github(
+    OUT_SOURCE_PATH SOURCE_PATH
+    REPO gsl-lite/gsl-lite
+    REF 4b796627ad0fa42640f5fdb96f23c4a0d9ee084f
+    SHA512 c0943824149b17c66947160bd83f3b14b821ba14bba02247546bd98d2b2809fae611e7841000fbe3be8f675cd076585f12ede05366fd1f9ba96a1067ac63ef43
+    HEAD_REF master
 )
 
-vcpkg_download_distfile(LICENSE
-    URLS "https://github.com/martinmoene/gsl-lite/raw/${GSL_LITE_VERSION}/LICENSE"
-    FILENAME "gsl-lite-LICENSE-${GSL_LITE_VERSION}.txt"
-    SHA512 1feff12bda27a5ec52440a7624de54d841faf3e254fff04ab169b7f312e685f4bfe71236de8b8ef759111ae95bdb69e05f2e8318773b0aff4ba24ea9568749bb
+vcpkg_configure_cmake(
+    SOURCE_PATH "${SOURCE_PATH}"
+    PREFER_NINJA
 )
 
-file(INSTALL ${HEADER} DESTINATION ${CURRENT_PACKAGES_DIR}/include RENAME gsl-lite.h)
-file(INSTALL ${LICENSE} DESTINATION ${CURRENT_PACKAGES_DIR}/share/gsl-lite RENAME copyright)
+vcpkg_install_cmake()
+vcpkg_fixup_cmake_targets(CONFIG_PATH "lib/cmake/gsl-lite")
+
+file(WRITE ${CURRENT_PACKAGES_DIR}/include/gsl-lite.hpp "#ifndef GSL_LITE_HPP_VCPKG_COMPAT_HEADER_INCLUDED
+#define GSL_LITE_HPP_VCPKG_COMPAT_HEADER_INCLUDED
+#pragma message(\"The header <gsl-lite.hpp> is deprecated and provided only for compatibility; please include <gsl/gsl-lite.hpp> instead.\")
+#include <gsl/gsl-lite.hpp>
+#endif // GSL_LITE_HPP_VCPKG_COMPAT_HEADER_INCLUDED")
+
+file(REMOVE_RECURSE
+    "${CURRENT_PACKAGES_DIR}/lib"
+    "${CURRENT_PACKAGES_DIR}/debug"
+)
+
+file(INSTALL "${SOURCE_PATH}/LICENSE" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}" RENAME copyright)

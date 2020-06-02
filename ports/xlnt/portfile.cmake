@@ -1,16 +1,18 @@
-include(vcpkg_common_functions)
+if(VCPKG_TARGET_IS_WINDOWS) 
+    if(VCPKG_LIBRARY_LINKAGE STREQUAL static)
+       set(win_patch "static-linking-for-windows.patch")
+    endif()
+endif()
 
-set(XLNT_REV 9dccde4bff34cfbafbdc3811fdd05326ac6bd0aa)
-set(XLNT_HASH 85bb651e42e33a829672ee76d14504fcbab683bb6b468d728837f1163b5ca1395c9aa80b3bed91a243e065599cdbf23cad769375f77792f71c173b02061771af)
-set(XLNT_SOURCE_PATH ${CURRENT_BUILDTREES_DIR}/src/xlnt-${XLNT_REV})
-
-vcpkg_download_distfile(ARCHIVE
-    URLS https://github.com/tfussell/xlnt/archive/${XLNT_REV}.zip
-    FILENAME xlnt-${XLNT_REV}.zip
-    SHA512 ${XLNT_HASH}
+vcpkg_from_github(
+    OUT_SOURCE_PATH SOURCE_PATH
+    REPO tfussell/xlnt
+    REF 85e6878cc41d4c5ad002e961dc1fe35e41f936b6 # v1.4.0
+    SHA512 335198fbcc1b3028e38bced4ee26047047b02372b6c52727a64c0cab6db19cc31be8ac6c08e96f415875a181d6f717082220b0f63f08ef6ac194927e2184a9df
+    HEAD_REF master
+    PATCHES
+        ${win_patch}
 )
-
-vcpkg_extract_source_archive(${ARCHIVE})
 
 if(VCPKG_LIBRARY_LINKAGE STREQUAL dynamic)
     set(STATIC OFF)
@@ -19,13 +21,18 @@ else()
 endif()
 
 vcpkg_configure_cmake(
-    SOURCE_PATH ${XLNT_SOURCE_PATH}
+    SOURCE_PATH ${SOURCE_PATH}
+    PREFER_NINJA
     OPTIONS -DTESTS=OFF -DSAMPLES=OFF -DBENCHMARKS=OFF -DSTATIC=${STATIC}
 )
 
 vcpkg_install_cmake()
 
+vcpkg_fixup_cmake_targets(CONFIG_PATH lib/cmake/xlnt)
+
 file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/debug/include)
-file(INSTALL ${XLNT_SOURCE_PATH}/LICENSE.md DESTINATION ${CURRENT_PACKAGES_DIR}/share/xlnt RENAME copyright)
+file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/debug/share)
+file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/share/man)
+file(INSTALL ${SOURCE_PATH}/LICENSE.md DESTINATION ${CURRENT_PACKAGES_DIR}/share/${PORT} RENAME copyright)
 
 vcpkg_copy_pdbs()

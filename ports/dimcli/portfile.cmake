@@ -3,17 +3,23 @@ include(vcpkg_common_functions)
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO gknowles/dimcli
-    REF  v2.0.0
-    SHA512 55ff29e3ddd6a96946f58e661231a1d2197f56a86c9260142f083589738aaa5e2f7721c754fa4a86b450a943c19367e1c4f82aec57e5b7ae7336f989e0194dec
+    REF v5.0.1
+    SHA512 ff005777230f9ded5e407f11ebed7d70db2a18ec60da8c80d36644b96c9d090d2f211e3c36b7d296a446c1b54d61c359a51082034b94e2398cc2305316f33d0f
     HEAD_REF master
+	PATCHES
+		fix-NameBoolean.patch
 )
 set(staticCrt OFF)
-if(VCPKG_CRT_LINKAGE STREQUAL static)
+if(VCPKG_CRT_LINKAGE STREQUAL "static")
     set(staticCrt ON)
 endif()
+
 vcpkg_configure_cmake(
     SOURCE_PATH ${SOURCE_PATH}
-    OPTIONS -DLINK_STATIC_RUNTIME:BOOL=${staticCrt}
+    OPTIONS
+        -DLINK_STATIC_RUNTIME:BOOL=${staticCrt}
+        -DINSTALL_LIBS:BOOL=ON
+        -DBUILD_PROJECT_NAME=dimcli
 )
 
 vcpkg_install_cmake()
@@ -22,6 +28,8 @@ vcpkg_install_cmake()
 file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/include")
 
 # Handle copyright
-file(INSTALL "${SOURCE_PATH}/LICENSE"
+file(
+    INSTALL "${SOURCE_PATH}/LICENSE"
     DESTINATION "${CURRENT_PACKAGES_DIR}/share/dimcli"
-    RENAME copyright)
+    RENAME copyright
+)

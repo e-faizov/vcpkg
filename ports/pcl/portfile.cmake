@@ -1,39 +1,35 @@
-# Common Ambient Variables:
-#   CURRENT_BUILDTREES_DIR    = ${VCPKG_ROOT_DIR}\buildtrees\${PORT}
-#   CURRENT_PACKAGES_DIR      = ${VCPKG_ROOT_DIR}\packages\${PORT}_${TARGET_TRIPLET}
-#   CURRENT_PORT_DIR          = ${VCPKG_ROOT_DIR}\ports\${PORT}
-#   PORT                      = current port name (zlib, etc)
-#   TARGET_TRIPLET            = current triplet (x86-windows, x64-windows-static, etc)
-#   VCPKG_CRT_LINKAGE         = C runtime linkage type (static, dynamic)
-#   VCPKG_LIBRARY_LINKAGE     = target library linkage type (static, dynamic)
-#   VCPKG_ROOT_DIR            = <C:\path\to\current\vcpkg>
-#   VCPKG_TARGET_ARCHITECTURE = target architecture (x64, x86, arm)
-#
-
-include(vcpkg_common_functions)
-
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO PointCloudLibrary/pcl
-    REF pcl-1.8.1
-    SHA512 9e7c87fb750a176712f08d215a906012c9e8174b687bbc8c08fa65de083b4468951bd8017b10409015d5eff0fc343885d2aae5c340346118b1a251af7bdd5cd7
+    REF pcl-1.9.1
+    SHA512 ca95028c23861ac2df0fa7e18fdd0202255cb2e49ab714325eb36c35289442c6eedbf489e6f9f232b30fa2a93eff4c9619f8a14d3fdfe58f353a4a6e26206bdf
     HEAD_REF master
+    PATCHES
+        pcl_utils.patch
+        pcl_config.patch
+        use_flann_targets.patch
+        boost-1.70.patch
+        cuda_10_1.patch
+        # Patch for https://github.com/microsoft/vcpkg/issues/7660
+        use_target_link_libraries_in_pclconfig.patch
+        fix-link-libpng.patch
+        boost-1.73.patch
 )
 
-vcpkg_apply_patches(
-    SOURCE_PATH ${SOURCE_PATH}
-    PATCHES "${CMAKE_CURRENT_LIST_DIR}/config.patch"
-            "${CMAKE_CURRENT_LIST_DIR}/config_install.patch"
-            "${CMAKE_CURRENT_LIST_DIR}/find_flann.patch"
-            "${CMAKE_CURRENT_LIST_DIR}/find_qhull.patch"
-            "${CMAKE_CURRENT_LIST_DIR}/find_openni2.patch"
-)
+file(REMOVE ${SOURCE_PATH}/cmake/Modules/FindFLANN.cmake)
 
-if(VCPKG_LIBRARY_LINKAGE STREQUAL "dynamic")
-    set(LIBRARY_LINKAGE ON)
-elseif(VCPKG_LIBRARY_LINKAGE STREQUAL "static")
-    set(LIBRARY_LINKAGE OFF)
-endif()
+string(COMPARE EQUAL "${VCPKG_LIBRARY_LINKAGE}" "dynamic" PCL_SHARED_LIBS)
+
+vcpkg_check_features(OUT_FEATURE_OPTIONS FEATURE_OPTIONS
+    openni2     WITH_OPENNI2
+    qt          WITH_QT
+    pcap        WITH_PCAP
+    cuda        WITH_CUDA
+    cuda        BUILD_CUDA
+    cuda        BUILD_GPU
+    tools       BUILD_tools
+    opengl      WITH_OPENGL
+)
 
 vcpkg_configure_cmake(
     SOURCE_PATH ${SOURCE_PATH}
@@ -41,25 +37,33 @@ vcpkg_configure_cmake(
     OPTIONS
         # BUILD
         -DBUILD_surface_on_nurbs=ON
-        -DBUILD_tools=OFF
         # PCL
-        -DPCL_BUILD_WITH_BOOST_DYNAMIC_LINKING_WIN32=${LIBRARY_LINKAGE}
-        -DPCL_BUILD_WITH_FLANN_DYNAMIC_LINKING_WIN32=${LIBRARY_LINKAGE}
-        -DPCL_SHARED_LIBS=${LIBRARY_LINKAGE}
+        -DPCL_BUILD_WITH_BOOST_DYNAMIC_LINKING_WIN32=${PCL_SHARED_LIBS}
+        -DPCL_BUILD_WITH_FLANN_DYNAMIC_LINKING_WIN32=${PCL_SHARED_LIBS}
+        -DPCL_BUILD_WITH_QHULL_DYNAMIC_LINKING_WIN32=${PCL_SHARED_LIBS}
+        -DPCL_SHARED_LIBS=${PCL_SHARED_LIBS}
         # WITH
-        -DWITH_CUDA=OFF
         -DWITH_LIBUSB=OFF
-        -DWITH_OPENNI2=ON
-        -DWITH_PCAP=OFF
-        -DWITH_PNG=OFF
+        -DWITH_PNG=ON
         -DWITH_QHULL=ON
-        -DWITH_QT=ON
-        -DWITH_VTK=ON
+        -DWITH_VTK=OFF # disabled due to API changes in 9.0
+        # FEATURES
+        ${FEATURE_OPTIONS}
 )
 
 vcpkg_install_cmake()
+vcpkg_fixup_cmake_targets()
+vcpkg_copy_pdbs()
 
 file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/debug/include)
 file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/debug/share)
-file(COPY ${SOURCE_PATH}/LICENSE.txt DESTINATION ${CURRENT_PACKAGES_DIR}/share/pcl)
-file(RENAME ${CURRENT_PACKAGES_DIR}/share/pcl/LICENSE.txt ${CURRENT_PACKAGES_DIR}/share/pcl/copyright)
+
+if("tools" IN_LIST FEATURES) 
+    file(GLOB EXEFILES_RELEASE ${CURRENT_PACKAGES_DIR}/bin/*.exe)
+    file(GLOB EXEFILES_DEBUG ${CURRENT_PACKAGES_DIR}/debug/bin/*.exe)
+    file(COPY ${EXEFILES_RELEASE} DESTINATION ${CURRENT_PACKAGES_DIR}/tools/pcl)
+    file(REMOVE ${EXEFILES_RELEASE} ${EXEFILES_DEBUG})
+    vcpkg_copy_tool_dependencies(${CURRENT_PACKAGES_DIR}/tools/pcl)
+endif()
+
+file(INSTALL ${SOURCE_PATH}/LICENSE.txt DESTINATION ${CURRENT_PACKAGES_DIR}/share/${PORT} RENAME copyright)

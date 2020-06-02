@@ -1,7 +1,14 @@
 #!/usr/bin/bash
 set -e
 export PATH=/usr/bin:$PATH
-pacman -Sy --noconfirm --needed diffutils make
+export PKG_CONFIG_PATH="`cygpath -p ${PKG_CONFIG_PATH}`"
+# Export HTTP(S)_PROXY as http(s)_proxy:
+if [ "$HTTP_PROXY" ]; then
+    export http_proxy=$HTTP_PROXY
+fi
+if [ "$HTTPS_PROXY" ]; then
+    export https_proxy=$HTTPS_PROXY
+fi
 
 PATH_TO_BUILD_DIR="`cygpath "$1"`"
 PATH_TO_SRC_DIR="`cygpath "$2"`"

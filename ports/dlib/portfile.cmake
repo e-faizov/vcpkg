@@ -1,18 +1,17 @@
-# Common Ambient Variables:
-#   VCPKG_ROOT_DIR = <C:\path\to\current\vcpkg>
-#   TARGET_TRIPLET is the current triplet (x86-windows, etc)
-#   PORT is the current port name (zlib, etc)
-#   CURRENT_BUILDTREES_DIR = ${VCPKG_ROOT_DIR}\buildtrees\${PORT}
-#   CURRENT_PACKAGES_DIR  = ${VCPKG_ROOT_DIR}\packages\${PORT}_${TARGET_TRIPLET}
+vcpkg_check_linkage(ONLY_STATIC_LIBRARY)
 
-include(vcpkg_common_functions)
-set(SOURCE_PATH ${CURRENT_BUILDTREES_DIR}/src/dlib-19.4)
-vcpkg_download_distfile(ARCHIVE
-    URLS "http://dlib.net/files/dlib-19.4.tar.bz2"
-    FILENAME "dlib-19.4.tar.bz2"
-    SHA512 c5ae22c507b57a13d880d79e9671730829114d0276508b0a41b373d3abae9057d960fce84fafe1be468d943910853baaa70c88f2516e20a0c41f3895bf217f7b
+vcpkg_from_github(
+    OUT_SOURCE_PATH SOURCE_PATH
+    REPO davisking/dlib
+    REF v19.19
+    SHA512 013f0c37fa98b0b93824ef94f2c50cb7b41461906ddec1df3021b489e8a02d299b20802416e9dcd6483fd55197e3792119e7b7774ca8dd9c307e8be68a39fe6b
+    HEAD_REF master
+    PATCHES
+        fix-sqlite3-fftw-linkage.patch
+        force_finding_packages.patch
+        find_blas.patch
 )
-vcpkg_extract_source_archive(${ARCHIVE})
+
 file(REMOVE_RECURSE ${SOURCE_PATH}/dlib/external/libjpeg)
 file(REMOVE_RECURSE ${SOURCE_PATH}/dlib/external/libpng)
 file(REMOVE_RECURSE ${SOURCE_PATH}/dlib/external/zlib)
@@ -22,20 +21,24 @@ file(READ "${SOURCE_PATH}/dlib/CMakeLists.txt" DLIB_CMAKE)
 string(REPLACE "PNG_LIBRARY" "PNG_LIBRARIES" DLIB_CMAKE "${DLIB_CMAKE}")
 file(WRITE "${SOURCE_PATH}/dlib/CMakeLists.txt" "${DLIB_CMAKE}")
 
+vcpkg_check_features(OUT_FEATURE_OPTIONS FEATURE_OPTIONS
+  "sqlite3"   DLIB_LINK_WITH_SQLITE3
+  "fftw3"     DLIB_USE_FFTW
+  "cuda"      DLIB_USE_CUDA
+)
+
 vcpkg_configure_cmake(
     SOURCE_PATH ${SOURCE_PATH}
-    PREFER_NINJA 
+    PREFER_NINJA
     OPTIONS
-        -DDLIB_LINK_WITH_SQLITE3=ON
-        -DDLIB_USE_FFTW=ON
+        ${FEATURE_OPTIONS}
         -DDLIB_PNG_SUPPORT=ON
         -DDLIB_JPEG_SUPPORT=ON
-        -DDLIB_USE_BLAS=OFF
-        -DDLIB_USE_LAPACK=OFF
-        -DDLIB_USE_CUDA=OFF
+        -DDLIB_USE_BLAS=ON
+        -DDLIB_USE_LAPACK=ON
         -DDLIB_GIF_SUPPORT=OFF
         -DDLIB_USE_MKL_FFT=OFF
-        #-DDLIB_USE_CUDA=ON
+        -DCMAKE_DEBUG_POSTFIX=d
     OPTIONS_DEBUG
         -DDLIB_ENABLE_ASSERTS=ON
         #-DDLIB_ENABLE_STACK_TRACE=ON
@@ -43,7 +46,7 @@ vcpkg_configure_cmake(
 
 vcpkg_install_cmake()
 
-vcpkg_fixup_cmake_targets(CONFIG_PATH lib/cmake)
+vcpkg_fixup_cmake_targets(CONFIG_PATH lib/cmake/dlib)
 
 # There is no way to suppress installation of the headers and resource files in debug build.
 file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/debug/include)
@@ -51,18 +54,25 @@ file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/debug/share)
 
 # Remove other files not required in package
 file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/include/dlib/all)
+file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/include/dlib/appveyor)
 file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/include/dlib/test)
-file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/include/dlib/travis) 
-file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/include/dlib/cmake_utils)
+file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/include/dlib/travis)
+file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/include/dlib/cmake_utils/test_for_neon)
+file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/include/dlib/cmake_utils/test_for_cudnn)
+file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/include/dlib/cmake_utils/test_for_cuda)
+file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/include/dlib/cmake_utils/test_for_cpp11)
+file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/include/dlib/cmake_utils/test_for_avx)
+file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/include/dlib/cmake_utils/test_for_sse4)
+file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/include/dlib/cmake_utils/test_for_libjpeg)
+file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/include/dlib/cmake_utils/test_for_libpng)
 file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/include/dlib/external/libpng/arm)
 
 # Dlib encodes debug/release in its config.h. Patch it to respond to the NDEBUG macro instead.
 file(READ ${CURRENT_PACKAGES_DIR}/include/dlib/config.h _contents)
-string(REPLACE "/* #undef ENABLE_ASSERTS */" "#if !defined(NDEBUG)\n#define ENABLE_ASSERTS\n#endif" _contents ${_contents})
-string(REPLACE "#define DLIB_DISABLE_ASSERTS" "#if defined(NDEBUG)\n#define DLIB_DISABLE_ASSERTS\n#endif" _contents ${_contents})
-file(WRITE ${CURRENT_PACKAGES_DIR}/include/dlib/config.h ${_contents})
+string(REPLACE "/* #undef ENABLE_ASSERTS */" "#if defined(_DEBUG)\n#define ENABLE_ASSERTS\n#endif" _contents ${_contents})
+string(REPLACE "#define DLIB_DISABLE_ASSERTS" "#if !defined(_DEBUG)\n#define DLIB_DISABLE_ASSERTS\n#endif" _contents ${_contents})
+file(WRITE ${CURRENT_PACKAGES_DIR}/include/dlib/config.h "${_contents}")
 
 # Handle copyright
-file(COPY ${CURRENT_PACKAGES_DIR}/share/doc/dlib/LICENSE.txt DESTINATION ${CURRENT_PACKAGES_DIR}/share/dlib)
-file(RENAME ${CURRENT_PACKAGES_DIR}/share/dlib/LICENSE.txt ${CURRENT_PACKAGES_DIR}/share/dlib/COPYRIGHT)
+file(INSTALL ${SOURCE_PATH}/dlib/LICENSE.txt DESTINATION ${CURRENT_PACKAGES_DIR}/share/${PORT} RENAME copyright)
 file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/share/doc)

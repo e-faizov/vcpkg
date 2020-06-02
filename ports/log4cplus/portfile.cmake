@@ -1,10 +1,29 @@
 include(vcpkg_common_functions)
+
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO log4cplus/log4cplus
-    REF REL_1_2_1-RC2
-    SHA512  480a2a61b01e988253c1bf2bb26088030541a63811c8ffbb9e90581d556b717df5220e3ff72eedd27ea704af35218f71f20ceadf4d6d94984b4f56d273b4d3a3
+    REF REL_2_0_4
+    SHA512 194e37b8de7be377dabe911d1cec831de41f5ce14dd617b5333739a7ab8dbc3061aa24351abe811588db507aa1563a637023b26684fb21bbfc88d24b4e4ce062
     HEAD_REF master
+    PATCHES fix-usage-error.patch
+)
+
+vcpkg_from_github(
+    OUT_SOURCE_PATH THREADPOOL_SOURCE_PATH
+    REPO log4cplus/ThreadPool
+    REF cc0b6371d3963f7028c2da5fc007733f9f3bf205
+    SHA512 ad4d287c1f83acac4c127136bc92489c43bb5293613dc54b878b8e75a8583f7eefda6434d09789dad47b87a5d38f10a07a746d42d299410c11f2dbcce8af3012
+    HEAD_REF master
+)
+
+file(
+    COPY
+        ${THREADPOOL_SOURCE_PATH}/COPYING
+        ${THREADPOOL_SOURCE_PATH}/example.cpp
+        ${THREADPOOL_SOURCE_PATH}/README.md
+        ${THREADPOOL_SOURCE_PATH}/ThreadPool.h
+    DESTINATION ${SOURCE_PATH}/threadpool
 )
 
 vcpkg_configure_cmake(
@@ -15,7 +34,7 @@ vcpkg_configure_cmake(
 
 vcpkg_install_cmake()
 
-vcpkg_fixup_cmake_targets(CONFIG_PATH lib/cmake)
+vcpkg_fixup_cmake_targets(CONFIG_PATH lib/cmake/log4cplus)
 
 vcpkg_copy_pdbs()
 

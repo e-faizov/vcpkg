@@ -2,6 +2,8 @@
 
 Download and cache a file needed for this port.
 
+This helper should always be used instead of CMake's built-in `file(DOWNLOAD)` command.
+
 ## Usage
 ```cmake
 vcpkg_download_distfile(
@@ -26,14 +28,24 @@ The expected hash for the file.
 
 If this doesn't match the downloaded version, the build will be terminated with a message describing the mismatch.
 
+### SKIP_SHA512
+Skip SHA512 hash check for file.
+
+This switch is only valid when building with the `--head` command line flag.
+
+### HEADERS
+A list of headers to append to the download request. This can be used for authentication during a download.
+
+Headers should be specified as "<header-name>: <header-value>".
+
 ## Notes
-The command [`vcpkg_from_github`](vcpkg_from_github.md) should be used instead of this for downloading the main archive for GitHub projects.
+The helper [`vcpkg_from_github`](vcpkg_from_github.md) should be used for downloading from GitHub projects.
 
 ## Examples
 
-* [boost](https://github.com/Microsoft/vcpkg/blob/master/ports/boost/portfile.cmake)
+* [apr](https://github.com/Microsoft/vcpkg/blob/master/ports/apr/portfile.cmake)
 * [fontconfig](https://github.com/Microsoft/vcpkg/blob/master/ports/fontconfig/portfile.cmake)
-* [openssl](https://github.com/Microsoft/vcpkg/blob/master/ports/openssl/portfile.cmake)
+* [freetype](https://github.com/Microsoft/vcpkg/blob/master/ports/freetype/portfile.cmake)
 
 ## Source
 [scripts/cmake/vcpkg_download_distfile.cmake](https://github.com/Microsoft/vcpkg/blob/master/scripts/cmake/vcpkg_download_distfile.cmake)

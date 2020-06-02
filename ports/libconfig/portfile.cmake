@@ -1,30 +1,23 @@
-include(vcpkg_common_functions)
-
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO hyperrealm/libconfig
-    REF v1.6
-    SHA512 6222110851970fda11d21e73bc322be95fb1ce62c513e2f4cc7875d7b32d1d211860971692db679edf8ac46151033a132fc669bd16590fec56360ef3a6e584f8
+    REF v1.7.2
+    SHA512 9df57355c2d08381b4a0a6366f0db3633fbe8f73c2bb8c370c040b0bae96ce89ee4ac6c17a5a247fed855d890fa383e5b70cb5573fc9cfc62194d5b94e161cee
     HEAD_REF master
 )
 
-vcpkg_apply_patches(
-    SOURCE_PATH ${SOURCE_PATH}
-    PATCHES
-    "${CMAKE_CURRENT_LIST_DIR}/fix-scanner-source-msvc-patch.patch"
-    "${CMAKE_CURRENT_LIST_DIR}/fix-scanner-header-msvc-patch.patch"
-)
-
 file(COPY ${CMAKE_CURRENT_LIST_DIR}/CMakeLists.txt DESTINATION ${SOURCE_PATH})
-file(COPY ${CMAKE_CURRENT_LIST_DIR}/scandir.c DESTINATION ${SOURCE_PATH}/lib/win32)
 
 
 vcpkg_configure_cmake(
   SOURCE_PATH ${SOURCE_PATH}
+  PREFER_NINJA
   OPTIONS_DEBUG -DDISABLE_INSTALL_HEADERS=ON
 )
 
 vcpkg_install_cmake()
+
+vcpkg_copy_pdbs()
 
 foreach(FILE ${CURRENT_PACKAGES_DIR}/include/libconfig.h++ ${CURRENT_PACKAGES_DIR}/include/libconfig.h)
   file(READ ${FILE} _contents)
@@ -41,6 +34,4 @@ foreach(FILE ${CURRENT_PACKAGES_DIR}/include/libconfig.h++ ${CURRENT_PACKAGES_DI
   file(WRITE ${FILE} "${_contents}")
 endforeach()
 
-file(INSTALL ${SOURCE_PATH}/LICENSE DESTINATION ${CURRENT_PACKAGES_DIR}/share/libconfig RENAME copyright)
-
-vcpkg_copy_pdbs()
+file(INSTALL ${SOURCE_PATH}/LICENSE DESTINATION ${CURRENT_PACKAGES_DIR}/share/${PORT} RENAME copyright)

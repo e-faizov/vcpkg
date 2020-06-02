@@ -1,71 +1,84 @@
-include(vcpkg_common_functions)
-set(SOURCE_PATH ${CURRENT_BUILDTREES_DIR}/src/SDL2-2.0.5)
-vcpkg_download_distfile(ARCHIVE_FILE
-    URLS "http://libsdl.org/release/SDL2-2.0.5.tar.gz"
-    FILENAME "SDL2-2.0.5.tar.gz"
-    SHA512 6401f5df08c08316c09bc6ac5b28345c5184bb25770baa5c94c0a582ae130ddf73bb736e44bb31f4e427c1ddbbeec4755a6a5f530b6b4c3d0f13ebc78ddc1750
+set(SDL2_VERSION 2.0.12)
+vcpkg_download_distfile(ARCHIVE
+    URLS "https://www.libsdl.org/release/SDL2-2.0.12.tar.gz"
+    FILENAME "SDL2-${SDL2_VERSION}.tar.gz"
+    SHA512 3f1f04af0f3d9dda9c84a2e9274ae8d83ea0da3fc367970a820036cc4dc1dbf990cfc37e4975ae05f0b45a4ffa739c6c19e470c00bf3f2bce9b8b63717b8b317
 )
-vcpkg_extract_source_archive(${ARCHIVE_FILE})
 
-vcpkg_apply_patches(
-    SOURCE_PATH ${SOURCE_PATH}
+vcpkg_extract_source_archive_ex(
+    OUT_SOURCE_PATH SOURCE_PATH
+    ARCHIVE ${ARCHIVE}
     PATCHES
-        ${CMAKE_CURRENT_LIST_DIR}/dont-ignore-default-libs.patch
-        ${CMAKE_CURRENT_LIST_DIR}/export-symbols-only-in-shared-build.patch
+        export-symbols-only-in-shared-build.patch
+        enable-winrt-cmake.patch
+        disable-hidapi-for-uwp.patch
+        fix-space-in-path.patch
+        disable-wcslcpy-and-wcslcat-for-windows.patch
 )
 
-if(VCPKG_CMAKE_SYSTEM_NAME MATCHES "WindowsStore")
-    vcpkg_build_msbuild(
-        PROJECT_PATH ${SOURCE_PATH}/VisualC-WinRT/UWP_VS2015/SDL-UWP.vcxproj
-    )
+string(COMPARE EQUAL "${VCPKG_LIBRARY_LINKAGE}" "static" SDL_STATIC)
+string(COMPARE EQUAL "${VCPKG_LIBRARY_LINKAGE}" "dynamic" SDL_SHARED)
+string(COMPARE EQUAL "${VCPKG_CRT_LINKAGE}" "static" FORCE_STATIC_VCRT)
 
-    file(COPY
-        ${SOURCE_PATH}/VisualC-WinRT/UWP_VS2015/Debug/SDL-UWP/SDL2.dll
-        ${SOURCE_PATH}/VisualC-WinRT/UWP_VS2015/Debug/SDL-UWP/SDL2.pdb
-        DESTINATION ${CURRENT_PACKAGES_DIR}/debug/bin)
-    file(COPY
-        ${SOURCE_PATH}/VisualC-WinRT/UWP_VS2015/Release/SDL-UWP/SDL2.dll
-        ${SOURCE_PATH}/VisualC-WinRT/UWP_VS2015/Release/SDL-UWP/SDL2.pdb
-        DESTINATION ${CURRENT_PACKAGES_DIR}/bin)
-    file(COPY ${SOURCE_PATH}/VisualC-WinRT/UWP_VS2015/Debug/SDL-UWP/SDL2.lib DESTINATION ${CURRENT_PACKAGES_DIR}/debug/lib)
-    file(COPY ${SOURCE_PATH}/VisualC-WinRT/UWP_VS2015/Release/SDL-UWP/SDL2.lib DESTINATION ${CURRENT_PACKAGES_DIR}/lib)
+vcpkg_check_features(OUT_FEATURE_OPTIONS FEATURE_OPTIONS
+    vulkan  VIDEO_VULKAN
+)
 
-    file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/include)
-    file(MAKE_DIRECTORY ${CURRENT_PACKAGES_DIR}/include)
-    file(COPY ${SOURCE_PATH}/include DESTINATION ${CURRENT_PACKAGES_DIR}/include)
-    file(RENAME ${CURRENT_PACKAGES_DIR}/include/include ${CURRENT_PACKAGES_DIR}/include/SDL2)
-else()
-    if(VCPKG_LIBRARY_LINKAGE STREQUAL static)
-        set(SDL_STATIC_LIB ON)
-        set(SDL_SHARED_LIB OFF)
-    else()
-        set(SDL_STATIC_LIB OFF)
-        set(SDL_SHARED_LIB ON)
-    endif()
-    if(VCPKG_CRT_LINKAGE STREQUAL static)
-        set(SDL_STATIC_CRT ON)
-    else()
-        set(SDL_STATIC_CRT OFF)
-    endif()
-    
-    vcpkg_configure_cmake(
-        SOURCE_PATH ${SOURCE_PATH}
-        OPTIONS
-            -DSDL_STATIC=${SDL_STATIC_LIB}
-            -DSDL_SHARED=${SDL_SHARED_LIB}
-            -DFORCE_STATIC_VCRT=${SDL_STATIC_CRT}
-            -DLIBC=ON
-    )
+vcpkg_configure_cmake(
+    SOURCE_PATH ${SOURCE_PATH}
+    PREFER_NINJA
+    OPTIONS ${FEATURE_OPTIONS}
+        -DSDL_STATIC=${SDL_STATIC}
+        -DSDL_SHARED=${SDL_SHARED}
+        -DFORCE_STATIC_VCRT=${FORCE_STATIC_VCRT}
+        -DLIBC=ON
+)
 
-    vcpkg_install_cmake()
+vcpkg_install_cmake()
 
-    file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/debug/include)
+if(EXISTS "${CURRENT_PACKAGES_DIR}/cmake")
+    vcpkg_fixup_cmake_targets(CONFIG_PATH cmake)
+elseif(EXISTS "${CURRENT_PACKAGES_DIR}/lib/cmake/SDL2")
+    vcpkg_fixup_cmake_targets(CONFIG_PATH lib/cmake/SDL2)
+elseif(EXISTS "${CURRENT_PACKAGES_DIR}/SDL2.framework/Resources")
+    vcpkg_fixup_cmake_targets(CONFIG_PATH SDL2.framework/Resources)
 endif()
 
-file(COPY ${CURRENT_PACKAGES_DIR}/lib/SDL2main.lib DESTINATION ${CURRENT_PACKAGES_DIR}/lib/manual-link)
-file(REMOVE ${CURRENT_PACKAGES_DIR}/lib/SDL2main.lib)
-file(COPY ${CURRENT_PACKAGES_DIR}/debug/lib/SDL2main.lib DESTINATION ${CURRENT_PACKAGES_DIR}/debug/lib/manual-link)
-file(REMOVE ${CURRENT_PACKAGES_DIR}/debug/lib/SDL2main.lib)
+file(REMOVE_RECURSE
+    ${CURRENT_PACKAGES_DIR}/debug/include
+    ${CURRENT_PACKAGES_DIR}/debug/share
+    ${CURRENT_PACKAGES_DIR}/bin/sdl2-config
+    ${CURRENT_PACKAGES_DIR}/debug/bin/sdl2-config
+    ${CURRENT_PACKAGES_DIR}/SDL2.framework
+    ${CURRENT_PACKAGES_DIR}/debug/SDL2.framework
+)
 
-file(INSTALL ${SOURCE_PATH}/COPYING.txt DESTINATION ${CURRENT_PACKAGES_DIR}/share/sdl2 RENAME copyright)
+file(GLOB BINS ${CURRENT_PACKAGES_DIR}/debug/bin/* ${CURRENT_PACKAGES_DIR}/bin/*)
+if(NOT BINS)
+    file(REMOVE_RECURSE
+        ${CURRENT_PACKAGES_DIR}/bin
+        ${CURRENT_PACKAGES_DIR}/debug/bin
+    )
+endif()
+
+if(NOT VCPKG_CMAKE_SYSTEM_NAME)
+    if(NOT DEFINED VCPKG_BUILD_TYPE OR VCPKG_BUILD_TYPE STREQUAL "release")
+        file(MAKE_DIRECTORY ${CURRENT_PACKAGES_DIR}/lib/manual-link)
+        file(RENAME ${CURRENT_PACKAGES_DIR}/lib/SDL2main.lib ${CURRENT_PACKAGES_DIR}/lib/manual-link/SDL2main.lib)
+    endif()
+    if(NOT DEFINED VCPKG_BUILD_TYPE OR VCPKG_BUILD_TYPE STREQUAL "debug")
+        file(MAKE_DIRECTORY ${CURRENT_PACKAGES_DIR}/debug/lib/manual-link)
+        file(RENAME ${CURRENT_PACKAGES_DIR}/debug/lib/SDL2maind.lib ${CURRENT_PACKAGES_DIR}/debug/lib/manual-link/SDL2maind.lib)
+    endif()
+
+    file(GLOB SHARE_FILES ${CURRENT_PACKAGES_DIR}/share/sdl2/*.cmake)
+    foreach(SHARE_FILE ${SHARE_FILES})
+        file(READ "${SHARE_FILE}" _contents)
+        string(REPLACE "lib/SDL2main" "lib/manual-link/SDL2main" _contents "${_contents}")
+        file(WRITE "${SHARE_FILE}" "${_contents}")
+    endforeach()
+endif()
+
+file(COPY ${CMAKE_CURRENT_LIST_DIR}/vcpkg-cmake-wrapper.cmake DESTINATION ${CURRENT_PACKAGES_DIR}/share/${PORT})
+configure_file(${SOURCE_PATH}/COPYING.txt ${CURRENT_PACKAGES_DIR}/share/${PORT}/copyright COPYONLY)
 vcpkg_copy_pdbs()

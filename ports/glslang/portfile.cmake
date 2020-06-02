@@ -1,47 +1,37 @@
 include(vcpkg_common_functions)
-if(VCPKG_LIBRARY_LINKAGE STREQUAL dynamic)
-  message(WARNING "Dynamic not supported. Building static")
-  set(VCPKG_LIBRARY_LINKAGE "static")
-endif()
+
+vcpkg_check_linkage(ONLY_STATIC_LIBRARY)
 
 vcpkg_from_github(
   OUT_SOURCE_PATH SOURCE_PATH
   REPO KhronosGroup/glslang
-  REF  1c573fbcfba6b3d631008b1babc838501ca925d3
-  SHA512 4f04dc39d9a70959ded1f4fe05ca5c7b0413c05bc3f049c11b5be7c8e1a70675f4221c9d8c712e7695f30eadb9bd7d0f1e71f431a6c9d4fea2cd2abbc73bd49a
+  REF f88e5824d2cfca5edc58c7c2101ec9a4ec36afac
+  SHA512 92dc287e8930db6e00bde23b770f763dc3cf8a405a37b682bbd65e1dbde1f1f5161543fcc70b09eef07a5ce8bbe8f368ef84ac75003c122f42d1f6b9eaa8bd50
   HEAD_REF master
+  PATCHES
+    CMakeLists-targets.patch
+    CMakeLists-windows.patch
 )
 
 vcpkg_configure_cmake(
   SOURCE_PATH ${SOURCE_PATH}
   PREFER_NINJA
+  OPTIONS
+    -DCMAKE_DEBUG_POSTFIX=d
+    -DSKIP_GLSLANG_INSTALL=OFF
 )
 
 vcpkg_install_cmake()
 
-file(COPY "${SOURCE_PATH}/glslang/Public" DESTINATION ${CURRENT_PACKAGES_DIR}/include/glslang)
-file(COPY "${SOURCE_PATH}/glslang/Include" DESTINATION ${CURRENT_PACKAGES_DIR}/include/glslang)
-file(COPY "${SOURCE_PATH}/glslang/MachineIndependent/Versions.h" DESTINATION ${CURRENT_PACKAGES_DIR}/include/glslang/MachineIndependent)
-file(COPY "${SOURCE_PATH}/SPIRV/Logger.h" DESTINATION ${CURRENT_PACKAGES_DIR}/include/SPIRV)
-file(COPY "${SOURCE_PATH}/SPIRV/spirv.hpp" DESTINATION ${CURRENT_PACKAGES_DIR}/include/SPIRV)
-file(COPY "${SOURCE_PATH}/SPIRV/GlslangToSpv.h" DESTINATION ${CURRENT_PACKAGES_DIR}/include/SPIRV)
-file(COPY "${CURRENT_PACKAGES_DIR}/bin/glslangValidator.exe" DESTINATION ${CURRENT_PACKAGES_DIR}/tools)
-file(REMOVE "${CURRENT_PACKAGES_DIR}/bin/glslangValidator.exe")
-file(REMOVE "${CURRENT_PACKAGES_DIR}/debug/bin/glslangValidator.exe")
-file(COPY "${CURRENT_PACKAGES_DIR}/bin/spirv-remap.exe" DESTINATION ${CURRENT_PACKAGES_DIR}/tools)
-file(REMOVE "${CURRENT_PACKAGES_DIR}/bin/spirv-remap.exe")
-file(REMOVE "${CURRENT_PACKAGES_DIR}/debug/bin/spirv-remap.exe")
+vcpkg_fixup_cmake_targets(CONFIG_PATH share/glslang)
 
-file(GLOB BIN_DIR "${CURRENT_PACKAGES_DIR}/bin/*")
-list(LENGTH BIN_DIR BIN_DIR_SIZE)
-if(${BIN_DIR_SIZE} EQUAL 0)
-  file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/bin")
-endif()
-file(GLOB DEBUG_BIN_DIR "${CURRENT_PACKAGES_DIR}/debug/bin/*")
-list(LENGTH DEBUG_BIN_DIR DEBUG_BIN_DIR_SIZE)
-if(${DEBUG_BIN_DIR_SIZE} EQUAL 0)
-  file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/bin")
-endif()
+vcpkg_copy_pdbs()
+
+file(RENAME "${CURRENT_PACKAGES_DIR}/bin" "${CURRENT_PACKAGES_DIR}/tools")
+file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/debug/include)
+file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/bin")
 
 # Handle copyright
 file(COPY ${CMAKE_CURRENT_LIST_DIR}/copyright DESTINATION ${CURRENT_PACKAGES_DIR}/share/glslang)
+
+vcpkg_test_cmake(PACKAGE_NAME glslang)

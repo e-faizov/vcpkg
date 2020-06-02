@@ -22,14 +22,16 @@ set(LMDB_CONFIG_INSTALL_DIR share/lmdb CACHE PATH "Install directory for cmake c
 
 
 if(BUILD_SHARED_LIBS)
-set(CMAKE_SHARED_LINKER_FLAGS_DEBUG "${CMAKE_SHARED_LINKER_FLAGS_DEBUG} /DEF:${CMAKE_CURRENT_SOURCE_DIR}/lmdbd.def")
-set(CMAKE_SHARED_LINKER_FLAGS_RELEASE "${CMAKE_SHARED_LINKER_FLAGS_DEBUG} /DEF:${CMAKE_CURRENT_SOURCE_DIR}/lmdb.def")
+set(CMAKE_SHARED_LINKER_FLAGS_DEBUG "${CMAKE_SHARED_LINKER_FLAGS_DEBUG} /DEF:\"${CMAKE_CURRENT_SOURCE_DIR}/lmdbd.def\"")
+set(CMAKE_SHARED_LINKER_FLAGS_RELEASE "${CMAKE_SHARED_LINKER_FLAGS_DEBUG} /DEF:\"${CMAKE_CURRENT_SOURCE_DIR}/lmdb.def\"")
 endif()
 
 set(SRCS lmdb mdb.c lmdb.h midl.c midl.h )
 add_library(lmdb ${SRCS})
 set_target_properties(lmdb PROPERTIES DEBUG_POSTFIX d)
-target_link_libraries(lmdb PRIVATE ntdll.lib)
+if (WIN32)
+  target_link_libraries(lmdb PRIVATE ntdll.lib)
+endif()
 
 install(TARGETS lmdb DESTINATION lib
         EXPORT lmdb-targets

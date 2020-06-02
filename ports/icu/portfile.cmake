@@ -1,100 +1,165 @@
-if (VCPKG_CMAKE_SYSTEM_NAME STREQUAL WindowsStore)
-    message(FATAL_ERROR "Error: UWP builds are currently not supported.")
-endif()
+vcpkg_fail_port_install(ON_ARCH "arm" ON_TARGET "uwp")
 
-include(vcpkg_common_functions)
-set(SOURCE_PATH ${CURRENT_BUILDTREES_DIR}/src/icu-59.1/icu)
-set(ICU_VERSION 59)
-vcpkg_download_distfile(ARCHIVE
-    URLS "http://download.icu-project.org/files/icu4c/59.1/icu4c-59_1-src.zip"
-    FILENAME "icu4c-59_1-src.zip"
-    SHA512 1d3b39678e7cc4e9794e724982886a4918642231048eb76b9f683aad5a19e0b7c52b3b9c7107cb1a3879464682c4a3a97b58ab012d082bd9e5a80c67adf8ce8b)
-vcpkg_extract_source_archive(${ARCHIVE} ${CURRENT_BUILDTREES_DIR}/src/icu-59.1)
+set(ICU_VERSION_MAJOR 65)
+set(ICU_VERSION_MINOR 1)
+set(VERSION "${ICU_VERSION_MAJOR}.${ICU_VERSION_MINOR}")
+set(VERSION2 "${ICU_VERSION_MAJOR}_${ICU_VERSION_MINOR}")
+set(VERSION3 "${ICU_VERSION_MAJOR}-${ICU_VERSION_MINOR}")
 
-vcpkg_apply_patches(SOURCE_PATH ${SOURCE_PATH}
-    PATCHES ${CMAKE_CURRENT_LIST_DIR}/disable-escapestr-tool.patch)
+vcpkg_download_distfile(
+    ARCHIVE
+    URLS "https://github.com/unicode-org/icu/releases/download/release-${VERSION3}/icu4c-${VERSION2}-src.tgz"
+    FILENAME "icu4c-${VERSION2}-src.tgz"
+    SHA512 8f1ef33e1f4abc9a8ee870331c59f01b473d6da1251a19ce403f822f3e3871096f0791855d39c8f20c612fc49cda2c62c06864aa32ddab2dbd186d2b21ce9139
+)
+vcpkg_extract_source_archive_ex(
+    OUT_SOURCE_PATH SOURCE_PATH
+    ARCHIVE ${ARCHIVE}
+    PATCHES
+        ${CMAKE_CURRENT_LIST_DIR}/disable-escapestr-tool.patch
+        ${CMAKE_CURRENT_LIST_DIR}/remove-MD-from-configure.patch
+        ${CMAKE_CURRENT_LIST_DIR}/fix_parallel_build_on_windows.patch
+        ${CMAKE_CURRENT_LIST_DIR}/fix-extra.patch
+)
 
-# Acquire tools
-vcpkg_acquire_msys(MSYS_ROOT)
+vcpkg_find_acquire_program(PYTHON3)
+set(ENV{PYTHON} "${PYTHON3}")
 
-# Insert msys into the path between the compiler toolset and windows system32. This prevents masking of "link.exe" but DOES mask "find.exe".
-string(REPLACE ";$ENV{SystemRoot}\\system32;" ";${MSYS_ROOT}/usr/bin;$ENV{SystemRoot}\\system32;" NEWPATH "$ENV{PATH}")
-string(REPLACE ";$ENV{SystemRoot}\\System32;" ";${MSYS_ROOT}/usr/bin;$ENV{SystemRoot}\\System32;" NEWPATH "${NEWPATH}")
-set(ENV{PATH} "${NEWPATH}")
-set(BASH ${MSYS_ROOT}/usr/bin/bash.exe)
+set(CONFIGURE_OPTIONS "--disable-samples --disable-tests")
 
-vcpkg_execute_required_process(
-    COMMAND ${BASH} --noprofile --norc -c "pacman -Sy --noconfirm --needed make automake1.15"
-    WORKING_DIRECTORY "${MSYS_ROOT}"
-    LOGNAME "pacman-${TARGET_TRIPLET}")
-
-set(AUTOMAKE_DIR ${MSYS_ROOT}/usr/share/automake-1.15)
-file(COPY ${AUTOMAKE_DIR}/config.guess ${AUTOMAKE_DIR}/config.sub DESTINATION ${SOURCE_PATH}/source)
-
-set(CONFIGURE_OPTIONS "--host=i686-pc-mingw32 --disable-samples --disable-tests")
-
-if(VCPKG_LIBRARY_LINKAGE STREQUAL dynamic)
+if(VCPKG_LIBRARY_LINKAGE STREQUAL "dynamic")
     set(CONFIGURE_OPTIONS "${CONFIGURE_OPTIONS} --disable-static --enable-shared")
 else()
     set(CONFIGURE_OPTIONS "${CONFIGURE_OPTIONS} --enable-static --disable-shared")
 endif()
 
-set(CONFIGURE_OPTIONS_RELASE "--disable-debug --enable-release --prefix=${CURRENT_PACKAGES_DIR}")
+set(CONFIGURE_OPTIONS_RELEASE "--disable-debug --enable-release --prefix=${CURRENT_PACKAGES_DIR}")
 set(CONFIGURE_OPTIONS_DEBUG  "--enable-debug --disable-release --prefix=${CURRENT_PACKAGES_DIR}/debug")
 
-if(VCPKG_CRT_LINKAGE STREQUAL static)
-    set(ICU_RUNTIME "-MT")
+if(NOT VCPKG_TARGET_IS_WINDOWS)
+    set(BASH bash)
+    set(VCPKG_C_FLAGS "${VCPKG_C_FLAGS} -fPIC")
+    set(VCPKG_CXX_FLAGS "${VCPKG_CXX_FLAGS} -fPIC")
+    if(NOT DEFINED VCPKG_BUILD_TYPE OR VCPKG_BUILD_TYPE STREQUAL "release")
+        # Configure release
+        message(STATUS "Configuring ${TARGET_TRIPLET}-rel")
+        file(REMOVE_RECURSE ${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-rel)
+        file(MAKE_DIRECTORY ${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-rel)
+        set(ENV{CFLAGS} "-O2 ${VCPKG_C_FLAGS} ${VCPKG_C_FLAGS_RELEASE}")
+        set(ENV{CXXFLAGS} "-O2 ${VCPKG_CXX_FLAGS} ${VCPKG_CXX_FLAGS_RELEASE}")
+        vcpkg_execute_required_process(
+            COMMAND ${BASH} --noprofile --norc -c
+                "${SOURCE_PATH}/source/runConfigureICU Linux ${CONFIGURE_OPTIONS} ${CONFIGURE_OPTIONS_RELEASE}"
+            WORKING_DIRECTORY "${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-rel"
+            LOGNAME "configure-${TARGET_TRIPLET}-rel")
+        message(STATUS "Configuring ${TARGET_TRIPLET}-rel done")
+    endif()
+
+    if(NOT DEFINED VCPKG_BUILD_TYPE OR VCPKG_BUILD_TYPE STREQUAL "debug")
+        # Configure debug
+        message(STATUS "Configuring ${TARGET_TRIPLET}-dbg")
+        file(REMOVE_RECURSE ${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-dbg)
+        file(MAKE_DIRECTORY ${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-dbg)
+        set(ENV{CFLAGS} "-O0 -g ${VCPKG_C_FLAGS} ${VCPKG_C_FLAGS_DEBUG}")
+        set(ENV{CXXFLAGS} "-O0 -g ${VCPKG_CXX_FLAGS} ${VCPKG_CXX_FLAGS_DEBUG}")
+        vcpkg_execute_required_process(
+            COMMAND ${BASH} --noprofile --norc -c
+                "${SOURCE_PATH}/source/runConfigureICU Linux ${CONFIGURE_OPTIONS} ${CONFIGURE_OPTIONS_DEBUG}"
+            WORKING_DIRECTORY "${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-dbg"
+            LOGNAME "configure-${TARGET_TRIPLET}-dbg")
+        message(STATUS "Configuring ${TARGET_TRIPLET}-dbg done")
+    endif()
+
 else()
-    set(ICU_RUNTIME "-MD")
+
+    set(CONFIGURE_OPTIONS "${CONFIGURE_OPTIONS} --host=i686-pc-mingw32")
+
+    # Acquire tools
+    vcpkg_acquire_msys(MSYS_ROOT PACKAGES make automake1.15)
+
+    # Insert msys into the path between the compiler toolset and windows system32. This prevents masking of "link.exe" but DOES mask "find.exe".
+    string(REPLACE ";$ENV{SystemRoot}\\system32;" ";${MSYS_ROOT}/usr/bin;$ENV{SystemRoot}\\system32;" NEWPATH "$ENV{PATH}")
+    string(REPLACE ";$ENV{SystemRoot}\\System32;" ";${MSYS_ROOT}/usr/bin;$ENV{SystemRoot}\\System32;" NEWPATH "${NEWPATH}")
+    set(ENV{PATH} "${NEWPATH}")
+    set(BASH ${MSYS_ROOT}/usr/bin/bash.exe)
+
+    set(AUTOMAKE_DIR ${MSYS_ROOT}/usr/share/automake-1.15)
+    file(COPY ${AUTOMAKE_DIR}/config.guess ${AUTOMAKE_DIR}/config.sub DESTINATION ${SOURCE_PATH}/source)
+
+    if(VCPKG_CRT_LINKAGE STREQUAL static)
+        set(ICU_RUNTIME "-MT")
+    else()
+        set(ICU_RUNTIME "-MD")
+    endif()
+
+    if(NOT DEFINED VCPKG_BUILD_TYPE OR VCPKG_BUILD_TYPE STREQUAL "release")
+        # Configure release
+        message(STATUS "Configuring ${TARGET_TRIPLET}-rel")
+        file(REMOVE_RECURSE ${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-rel)
+        file(MAKE_DIRECTORY ${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-rel)
+        set(ENV{CFLAGS} "${ICU_RUNTIME} -O2 -Oi -Zi -FS ${VCPKG_C_FLAGS} ${VCPKG_C_FLAGS_RELEASE}")
+        set(ENV{CXXFLAGS} "${ICU_RUNTIME} -O2 -Oi -Zi -FS ${VCPKG_CXX_FLAGS} ${VCPKG_CXX_FLAGS_RELEASE}")
+        set(ENV{LDFLAGS} "-DEBUG -INCREMENTAL:NO -OPT:REF -OPT:ICF")
+        vcpkg_execute_required_process(
+            COMMAND ${BASH} --noprofile --norc -c
+                "${SOURCE_PATH}/source/runConfigureICU MSYS/MSVC ${CONFIGURE_OPTIONS} ${CONFIGURE_OPTIONS_RELEASE}"
+            WORKING_DIRECTORY "${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-rel"
+            LOGNAME "configure-${TARGET_TRIPLET}-rel")
+        message(STATUS "Configuring ${TARGET_TRIPLET}-rel done")
+    endif()
+
+    if(NOT DEFINED VCPKG_BUILD_TYPE OR VCPKG_BUILD_TYPE STREQUAL "debug")
+        # Configure debug
+        message(STATUS "Configuring ${TARGET_TRIPLET}-dbg")
+        file(REMOVE_RECURSE ${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-dbg)
+        file(MAKE_DIRECTORY ${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-dbg)
+        set(ENV{CFLAGS} "${ICU_RUNTIME}d -Od -Zi -FS -RTC1 ${VCPKG_C_FLAGS} ${VCPKG_C_FLAGS_DEBUG}")
+        set(ENV{CXXFLAGS} "${ICU_RUNTIME}d -Od -Zi -FS -RTC1 ${VCPKG_CXX_FLAGS} ${VCPKG_CXX_FLAGS_DEBUG}")
+        set(ENV{LDFLAGS} "-DEBUG")
+        vcpkg_execute_required_process(
+            COMMAND ${BASH} --noprofile --norc -c
+                "${SOURCE_PATH}/source/runConfigureICU MSYS/MSVC ${CONFIGURE_OPTIONS} ${CONFIGURE_OPTIONS_DEBUG}"
+            WORKING_DIRECTORY "${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-dbg"
+            LOGNAME "configure-${TARGET_TRIPLET}-dbg")
+        message(STATUS "Configuring ${TARGET_TRIPLET}-dbg done")
+    endif()
 endif()
-
-# Configure release
-message(STATUS "Configuring ${TARGET_TRIPLET}-rel")
-file(REMOVE_RECURSE ${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-rel)
-file(MAKE_DIRECTORY ${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-rel)
-set(ENV{CFLAGS} "${ICU_RUNTIME} -O2 -Oi -Zi")
-set(ENV{CXXFLAGS} "${ICU_RUNTIME} -O2 -Oi -Zi")
-set(ENV{LDFLAGS} "-DEBUG -INCREMENTAL:NO -OPT:REF -OPT:ICF")
-vcpkg_execute_required_process(
-    COMMAND ${BASH} --noprofile --norc -c 
-        "${SOURCE_PATH}/source/runConfigureICU MSYS/MSVC ${CONFIGURE_OPTIONS} ${CONFIGURE_OPTIONS_RELASE}"
-    WORKING_DIRECTORY "${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-rel"
-    LOGNAME "configure-${TARGET_TRIPLET}-rel")
-message(STATUS "Configuring ${TARGET_TRIPLET}-rel done")
-
-# Configure debug
-message(STATUS "Configuring ${TARGET_TRIPLET}-dbg")
-file(REMOVE_RECURSE ${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-dbg)
-file(MAKE_DIRECTORY ${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-dbg)
-set(ENV{CFLAGS} "${ICU_RUNTIME}d -Od -Zi -RTC1")
-set(ENV{CXXFLAGS} "${ICU_RUNTIME}d -Od -Zi -RTC1")
-set(ENV{LDFLAGS} "-DEBUG")
-vcpkg_execute_required_process(
-    COMMAND ${BASH} --noprofile --norc -c 
-        "${SOURCE_PATH}/source/runConfigureICU MSYS/MSVC ${CONFIGURE_OPTIONS} ${CONFIGURE_OPTIONS_DEBUG}"
-    WORKING_DIRECTORY "${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-dbg"
-    LOGNAME "configure-${TARGET_TRIPLET}-dbg")
-message(STATUS "Configuring ${TARGET_TRIPLET}-dbg done")
 
 unset(ENV{CFLAGS})
 unset(ENV{CXXFLAGS})
 unset(ENV{LDFLAGS})
 
-# Build release
-message(STATUS "Package ${TARGET_TRIPLET}-rel")
-vcpkg_execute_required_process(
-    COMMAND ${BASH} --noprofile --norc -c "make && make install"
-    WORKING_DIRECTORY "${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-rel"
-    LOGNAME "build-${TARGET_TRIPLET}-rel")
-message(STATUS "Package ${TARGET_TRIPLET}-rel done")
+if(NOT DEFINED VCPKG_BUILD_TYPE OR VCPKG_BUILD_TYPE STREQUAL "release")
+    # Build release
+    message(STATUS "Package ${TARGET_TRIPLET}-rel")
+    vcpkg_execute_build_process(
+        COMMAND ${BASH} --noprofile --norc -c "make -j ${VCPKG_CONCURRENCY}"
+        NO_PARALLEL_COMMAND ${BASH} --noprofile --norc -c "make"
+        WORKING_DIRECTORY "${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-rel"
+        LOGNAME "make-build-${TARGET_TRIPLET}-rel")
 
-# Build debug
-message(STATUS "Package ${TARGET_TRIPLET}-dbg")
-vcpkg_execute_required_process(
-    COMMAND ${BASH} --noprofile --norc -c "make && make install"
-    WORKING_DIRECTORY "${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-dbg"
-    LOGNAME "build-${TARGET_TRIPLET}-dbg")
-message(STATUS "Package ${TARGET_TRIPLET}-dbg done")
+    vcpkg_execute_build_process(
+        COMMAND ${BASH} --noprofile --norc -c "make install"
+        WORKING_DIRECTORY "${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-rel"
+        LOGNAME "make-install-${TARGET_TRIPLET}-rel")
+    message(STATUS "Package ${TARGET_TRIPLET}-rel done")
+endif()
+
+if(NOT DEFINED VCPKG_BUILD_TYPE OR VCPKG_BUILD_TYPE STREQUAL "debug")
+    # Build debug
+    message(STATUS "Package ${TARGET_TRIPLET}-dbg")
+    vcpkg_execute_build_process(
+        COMMAND ${BASH} --noprofile --norc -c "make -j ${VCPKG_CONCURRENCY}"
+        NO_PARALLEL_COMMAND ${BASH} --noprofile --norc -c "make"
+        WORKING_DIRECTORY "${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-dbg"
+        LOGNAME "make-build-${TARGET_TRIPLET}-dbg")
+
+    vcpkg_execute_build_process(
+        COMMAND ${BASH} --noprofile --norc -c "make install"
+        WORKING_DIRECTORY "${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-dbg"
+        LOGNAME "make-install-${TARGET_TRIPLET}-dbg")
+    message(STATUS "Package ${TARGET_TRIPLET}-dbg done")
+endif()
 
 file(REMOVE_RECURSE
     ${CURRENT_PACKAGES_DIR}/bin
@@ -112,19 +177,31 @@ file(GLOB TEST_LIBS
     ${CURRENT_PACKAGES_DIR}/debug/lib/*test*)
 file(REMOVE ${TEST_LIBS})
 
-if(VCPKG_LIBRARY_LINKAGE STREQUAL dynamic)
+if(VCPKG_LIBRARY_LINKAGE STREQUAL "dynamic")
     # copy icu dlls from lib to bin
-    file(GLOB RELEASE_DLLS ${CURRENT_PACKAGES_DIR}/lib/icu*${ICU_VERSION}.dll)
-    file(GLOB DEBUG_DLLS ${CURRENT_PACKAGES_DIR}/debug/lib/icu*d${ICU_VERSION}.dll)
-    file(COPY ${RELEASE_DLLS} DESTINATION ${CURRENT_PACKAGES_DIR}/bin)
-    file(COPY ${DEBUG_DLLS} DESTINATION ${CURRENT_PACKAGES_DIR}/debug/bin)
+    if(NOT DEFINED VCPKG_BUILD_TYPE OR VCPKG_BUILD_TYPE STREQUAL "release")
+        file(GLOB RELEASE_DLLS ${CURRENT_PACKAGES_DIR}/lib/icu*${ICU_VERSION_MAJOR}.dll)
+        file(COPY ${RELEASE_DLLS} DESTINATION ${CURRENT_PACKAGES_DIR}/bin)
+    endif()
+
+    if(NOT DEFINED VCPKG_BUILD_TYPE OR VCPKG_BUILD_TYPE STREQUAL "debug")
+        file(GLOB DEBUG_DLLS ${CURRENT_PACKAGES_DIR}/debug/lib/icu*d${ICU_VERSION_MAJOR}.dll)
+        file(COPY ${DEBUG_DLLS} DESTINATION ${CURRENT_PACKAGES_DIR}/debug/bin)
+    endif()
 else()
-    # rename static libraries to match import libs
-    # see https://gitlab.kitware.com/cmake/cmake/issues/16617
-    foreach(MODULE dt in io tu uc)
-        file(RENAME ${CURRENT_PACKAGES_DIR}/lib/sicu${MODULE}.lib ${CURRENT_PACKAGES_DIR}/lib/icu${MODULE}.lib)
-        file(RENAME ${CURRENT_PACKAGES_DIR}/debug/lib/sicu${MODULE}d.lib ${CURRENT_PACKAGES_DIR}/debug/lib/icu${MODULE}d.lib)
-    endforeach()
+    if(VCPKG_TARGET_IS_WINDOWS)
+        # rename static libraries to match import libs
+        # see https://gitlab.kitware.com/cmake/cmake/issues/16617
+        foreach(MODULE dt in io tu uc)
+            if(NOT DEFINED VCPKG_BUILD_TYPE OR VCPKG_BUILD_TYPE STREQUAL "release")
+                file(RENAME ${CURRENT_PACKAGES_DIR}/lib/sicu${MODULE}.lib ${CURRENT_PACKAGES_DIR}/lib/icu${MODULE}.lib)
+            endif()
+
+            if(NOT DEFINED VCPKG_BUILD_TYPE OR VCPKG_BUILD_TYPE STREQUAL "debug")
+                file(RENAME ${CURRENT_PACKAGES_DIR}/debug/lib/sicu${MODULE}d.lib ${CURRENT_PACKAGES_DIR}/debug/lib/icu${MODULE}d.lib)
+            endif()
+        endforeach()
+    endif()
 
     # force U_STATIC_IMPLEMENTATION macro
     foreach(HEADER utypes.h utf_old.h platform.h)
@@ -144,5 +221,5 @@ endif()
 # This is expected because ICU database contains no executable code
 vcpkg_copy_pdbs()
 
-file(COPY ${SOURCE_PATH}/LICENSE DESTINATION ${CURRENT_PACKAGES_DIR}/share/icu)
-file(RENAME ${CURRENT_PACKAGES_DIR}/share/icu/LICENSE ${CURRENT_PACKAGES_DIR}/share/icu/copyright)
+# Handle copyright
+file(INSTALL ${SOURCE_PATH}/LICENSE DESTINATION ${CURRENT_PACKAGES_DIR}/share/${PORT} RENAME copyright)

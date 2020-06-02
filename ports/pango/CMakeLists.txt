@@ -5,13 +5,25 @@ set(PANGO_LIB_SUFFIX 1.0)
 set(PANGO_DLL_SUFFIX 1)
 set(GLIB_LIB_VERSION 2.0)
 
-configure_file(./config.h.win32 ${CMAKE_SOURCE_DIR}/config.h COPYONLY)
-add_definitions(-DHAVE_CONFIG_H)
-include_directories(. ./pango)
+if(WIN32)
+  configure_file(./config.h.win32 ${CMAKE_CURRENT_BINARY_DIR}/config.h COPYONLY)
+else()
+  configure_file(./config.h.unix ${CMAKE_CURRENT_BINARY_DIR}/config.h COPYONLY)
+endif()
 
+if (WIN32)
+  # Set utf-8 charset to avoid compile error C2001
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /utf-8")
+endif()
+
+add_definitions(-DHAVE_CONFIG_H)
+include_directories(. ./pango ${CMAKE_CURRENT_BINARY_DIR})
+
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
 # find libintl
 find_path(LIBINTL_INCLUDE_DIR libintl.h)
 find_library(LIBINTL_LIBRARY NAMES libintl intl)
+endif()
 
 # find glib
 find_path(GLIB_INCLUDE_DIR glib.h)
@@ -47,6 +59,11 @@ find_library(FREETYPE_LIBRARY freetype${FT_SUFFIX})
 find_path(HARFBUZZ_INCLUDE_DIR harfbuzz/hb.h)
 find_library(HARFBUZZ_LIBRARY harfbuzz)
 
+if (APPLE)
+    find_library(COREFOUNDATION_LIBRARY CoreFoundation)
+    link_libraries(${COREFOUNDATION_LIBRARY})
+endif()
+
 set(FONT_INCLUDE_DIRS ${FREETYPE_INCLUDE_DIR} ${FONTCONFIG_INCLUDE_DIR} ${HARFBUZZ_INCLUDE_DIR}/harfbuzz)
 set(FONT_LIBRARIES ${FREETYPE_LIBRARY} ${FONTCONFIG_LIBRARY} ${HARFBUZZ_LIBRARY})
 
@@ -81,6 +98,7 @@ pango_add_module(pango
     pango/pango-color.c
     pango/pango-context.c
     pango/pango-coverage.c
+    pango/pango-emoji.c
     pango/pango-engine.c
     pango/pango-fontmap.c
     pango/pango-fontset.c
@@ -99,12 +117,14 @@ pango_add_module(pango
     pango/shape.c
     pango/pango-enum-types.c)
 
+if(WIN32)
 pango_add_module(pangowin32
     pango/pangowin32.c
     pango/pangowin32-fontcache.c
     pango/pangowin32-fontmap.c
     pango/pangowin32-shape.c)
-target_link_libraries(pangowin32 usp10 pango)
+target_link_libraries(pangowin32 usp10 pango gdi32)
+endif()
 
 pango_add_module(pangoft2
     pango/pangofc-font.c
@@ -121,17 +141,28 @@ pango_add_module(pangoft2
 target_link_libraries(pangoft2 pango ${FONT_LIBRARIES})
 target_include_directories(pangoft2 PRIVATE ${FONT_INCLUDE_DIRS})
 
-pango_add_module(pangocairo
-    pango/pangocairo-fcfont.c
+list(APPEND PANGO_CAIRO_SOURCES 
+	pango/pangocairo-fcfont.c
     pango/pangocairo-fcfontmap.c
-    pango/pangocairo-win32font.c
-    pango/pangocairo-win32fontmap.c
     pango/pangocairo-context.c
     pango/pangocairo-font.c
     pango/pangocairo-fontmap.c
     pango/pangocairo-render.c)
-target_link_libraries(pangocairo ${CAIRO_LIBRARIES} pango pangowin32 pangoft2 ${FONT_LIBRARIES})
+	
+if(WIN32)
+	list(APPEND PANGO_CAIRO_SOURCES 
+		pango/pangocairo-win32font.c
+		pango/pangocairo-win32fontmap.c)
+endif()
+
+pango_add_module(pangocairo ${PANGO_CAIRO_SOURCES})
+list(APPEND PANGO_CAIRO_LIBRARIES  ${CAIRO_LIBRARIES} pango pangoft2 ${FONT_LIBRARIES})
+if (WIN32)
+    list(APPEND PANGO_CAIRO_LIBRARIES pangowin32)
+endif()
+target_link_libraries(pangocairo ${PANGO_CAIRO_LIBRARIES}) 
 target_include_directories(pangocairo PRIVATE ${CAIRO_INCLUDE_DIR} ${FONT_INCLUDE_DIRS})
+
 
 if(NOT PANGO_SKIP_HEADERS)
     install(FILES

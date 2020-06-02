@@ -1,49 +1,83 @@
-# Common Ambient Variables:
-#   VCPKG_ROOT_DIR = <C:\path\to\current\vcpkg>
-#   TARGET_TRIPLET is the current triplet (x86-windows, etc)
-#   PORT is the current port name (zlib, etc)
-#   CURRENT_BUILDTREES_DIR = ${VCPKG_ROOT_DIR}\buildtrees\${PORT}
-#   CURRENT_PACKAGES_DIR  = ${VCPKG_ROOT_DIR}\packages\${PORT}_${TARGET_TRIPLET}
-#
+if(VCPKG_CMAKE_SYSTEM_NAME STREQUAL "WindowsStore")
+    message(FATAL_ERROR "${PORT} does not currently support UWP")
+endif()
 
-include(vcpkg_common_functions)
-set(SOURCE_PATH ${CURRENT_BUILDTREES_DIR}/src/apr-1.6.2)
+set(VERSION 1.7.0)
+
 vcpkg_download_distfile(ARCHIVE
-    URLS "https://www.apache.org/dist/apr/apr-1.6.2.tar.bz2"
-    FILENAME "apr-1.6.2.tar.bz2"
-    SHA512 20f449fde522f186b919b64ce6f90073b267557e17438607d31af917eca7941222dd7a7379d66f1430ff68f7e28fbccd140d24f3ca7aae8a876a550b19de284a
-)
-vcpkg_extract_source_archive(${ARCHIVE})
-
-vcpkg_configure_cmake(
-    SOURCE_PATH ${SOURCE_PATH}
-    OPTIONS -DINSTALL_PDB=OFF -DMIN_WINDOWS_VER=Windows7 -DAPR_HAVE_IPV6=ON
-    # OPTIONS -DUSE_THIS_IN_ALL_BUILDS=1 -DUSE_THIS_TOO=2
-    # OPTIONS_RELEASE -DOPTIMIZE=1
-    # OPTIONS_DEBUG -DDEBUGGABLE=1
+    URLS "https://www.apache.org/dist/apr/apr-${VERSION}.tar.bz2"
+    FILENAME "apr-${VERSION}.tar.bz2"
+    SHA512 3dc42d5caf17aab16f5c154080f020d5aed761e22db4c5f6506917f6bfd2bf8becfb40af919042bd4ce1077d5de74aa666f5edfba7f275efba78e8893c115148
 )
 
-vcpkg_install_cmake()
+vcpkg_extract_source_archive_ex(
+    OUT_SOURCE_PATH SOURCE_PATH
+    ARCHIVE ${ARCHIVE}
+)
 
-# There is no way to suppress installation of the headers in debug builds.
-file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/debug/include)
+if (VCPKG_TARGET_IS_WINDOWS)
+    vcpkg_check_features(OUT_FEATURE_OPTIONS FEATURE_OPTIONS
+        private-headers   INSTALL_PRIVATE_H
+    )
 
-# Both dynamic and static are built, so keep only the one needed
-if(VCPKG_LIBRARY_LINKAGE STREQUAL dynamic)
-    file(REMOVE ${CURRENT_PACKAGES_DIR}/lib/apr-1.lib
-                ${CURRENT_PACKAGES_DIR}/lib/aprapp-1.lib
-                ${CURRENT_PACKAGES_DIR}/debug/lib/apr-1.lib
-                ${CURRENT_PACKAGES_DIR}/debug/lib/aprapp-1.lib)
+    vcpkg_configure_cmake(
+        SOURCE_PATH ${SOURCE_PATH}
+        PREFER_NINJA
+        OPTIONS
+            -DINSTALL_PDB=OFF
+            -DMIN_WINDOWS_VER=Windows7
+            -DAPR_HAVE_IPV6=ON
+            -DAPR_INSTALL_PRIVATE_H=${INSTALL_PRIVATE_H}
+            ${FEATURE_OPTIONS}
+    )
+
+    vcpkg_install_cmake()
+
+    # There is no way to suppress installation of the headers in debug builds.
+    file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/debug/include)
+
+    # Both dynamic and static are built, so keep only the one needed
+    if(VCPKG_LIBRARY_LINKAGE STREQUAL dynamic)
+        file(REMOVE ${CURRENT_PACKAGES_DIR}/lib/apr-1.lib
+                    ${CURRENT_PACKAGES_DIR}/lib/aprapp-1.lib
+                    ${CURRENT_PACKAGES_DIR}/debug/lib/apr-1.lib
+                    ${CURRENT_PACKAGES_DIR}/debug/lib/aprapp-1.lib)
+    else()
+        file(REMOVE ${CURRENT_PACKAGES_DIR}/lib/libapr-1.lib
+                    ${CURRENT_PACKAGES_DIR}/lib/libaprapp-1.lib
+                    ${CURRENT_PACKAGES_DIR}/debug/lib/libapr-1.lib
+                    ${CURRENT_PACKAGES_DIR}/debug/lib/libaprapp-1.lib)
+        file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/bin ${CURRENT_PACKAGES_DIR}/debug/bin)
+    endif()
+
+    vcpkg_copy_pdbs()
 else()
-    file(REMOVE ${CURRENT_PACKAGES_DIR}/lib/libapr-1.lib
-                ${CURRENT_PACKAGES_DIR}/lib/libaprapp-1.lib
-                ${CURRENT_PACKAGES_DIR}/debug/lib/libapr-1.lib
-                ${CURRENT_PACKAGES_DIR}/debug/lib/libaprapp-1.lib)
-    file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/bin ${CURRENT_PACKAGES_DIR}/debug/bin)
+    # To cross-compile you will need a triplet file that locates the tool chain and sets --host and --cache parameters of "./configure".
+    # The ${VCPKG_PLATFORM_TOOLSET}.cache file must have been generated on the targeted host using "./configure -C".
+    # For example, to target aarch64-linux-gnu, triplets/aarch64-linux-gnu.cmake should contain (beyond the standard content):
+    # set(VCPKG_PLATFORM_TOOLSET aarch64-linux-gnu)
+    # set(VCPKG_CHAINLOAD_TOOLCHAIN_FILE ${MY_CROSS_DIR}/cmake/Toolchain-${VCPKG_PLATFORM_TOOLSET}.cmake)
+    # set(CONFIGURE_PARAMETER_1 --host=${VCPKG_PLATFORM_TOOLSET})
+    # set(CONFIGURE_PARAMETER_2 --cache-file=${MY_CROSS_DIR}/autoconf/${VCPKG_PLATFORM_TOOLSET}.cache)
+    if(CONFIGURE_PARAMETER_1)
+        message(STATUS "Configuring apr with ${CONFIGURE_PARAMETER_1} ${CONFIGURE_PARAMETER_2} ${CONFIGURE_PARAMETER_3}")
+    else()
+        message(STATUS "Configuring apr")
+    endif()
+    vcpkg_configure_make(
+        SOURCE_PATH "${SOURCE_PATH}"
+        NO_DEBUG
+        OPTIONS
+            "--prefix=${CURRENT_INSTALLED_DIR}"
+            "${CONFIGURE_PARAMETER_1}"
+            "${CONFIGURE_PARAMETER_2}"
+            "${CONFIGURE_PARAMETER_3}"
+    )
+
+    vcpkg_install_make()
+
 endif()
 
 # Handle copyright
-file(COPY ${SOURCE_PATH}/LICENSE DESTINATION ${CURRENT_PACKAGES_DIR}/share/apr)
-file(RENAME ${CURRENT_PACKAGES_DIR}/share/apr/LICENSE ${CURRENT_PACKAGES_DIR}/share/apr/copyright)
+file(INSTALL ${SOURCE_PATH}/LICENSE DESTINATION ${CURRENT_PACKAGES_DIR}/share/${PORT} RENAME copyright)
 
-vcpkg_copy_pdbs()

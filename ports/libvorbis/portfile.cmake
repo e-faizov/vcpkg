@@ -1,44 +1,27 @@
-# Common Ambient Variables:
-#   VCPKG_ROOT_DIR = <C:\path\to\current\vcpkg>
-#   TARGET_TRIPLET is the current triplet (x86-windows, etc)
-#   PORT is the current port name (zlib, etc)
-#   CURRENT_BUILDTREES_DIR = ${VCPKG_ROOT_DIR}\buildtrees\${PORT}
-#   CURRENT_PACKAGES_DIR  = ${VCPKG_ROOT_DIR}\packages\${PORT}_${TARGET_TRIPLET}
-#
-
-include(vcpkg_common_functions)
-set(SOURCE_PATH ${CURRENT_BUILDTREES_DIR}/src/vorbis-143caf4023a90c09a5eb685fdd46fb9b9c36b1ee)
-vcpkg_download_distfile(ARCHIVE
-    URLS "https://github.com/xiph/vorbis/archive/143caf4023a90c09a5eb685fdd46fb9b9c36b1ee.zip"
-    FILENAME "vorbis-143caf4023a90c09a5eb685fdd46fb9b9c36b1ee.zip"
-    SHA512 9eeb64b1664ba8a1d118cdc5efc0090fe5f542eff33a16f4676fde8e59031fd0f9017857a7c45ca549899cab34efefd81dd54a57fab97f91f776fd9426f4e37a
-)
-
-vcpkg_extract_source_archive(${ARCHIVE})
-vcpkg_apply_patches(SOURCE_PATH ${SOURCE_PATH}
+vcpkg_from_github(
+    OUT_SOURCE_PATH SOURCE_PATH
+    REPO xiph/vorbis
+    REF 4d963fe0b4ba3bdb45233de4b959ce2f36963f7a
+    SHA512 c739cebf1a7ff4739447e899d3373e2fa7a0f3a87affd59c9c0c65d69e7611ceadcdcd1592c279e65123d7d2e1c9f8f8e7dee93def8753bcdd6d115677232d83
+    HEAD_REF master
     PATCHES
-        ${CMAKE_CURRENT_LIST_DIR}/0001-Dont-export-vorbisenc-functions.patch
-        ${CMAKE_CURRENT_LIST_DIR}/0002-Allow-deprecated-functions.patch
+        0001-Dont-export-vorbisenc-functions.patch
 )
-
-file(TO_NATIVE_PATH "${VCPKG_ROOT_DIR}/installed/${TARGET_TRIPLET}/include" OGG_INCLUDE)
-file(TO_NATIVE_PATH "${VCPKG_ROOT_DIR}/installed/${TARGET_TRIPLET}/lib/ogg.lib" OGG_LIB_REL)
-file(TO_NATIVE_PATH "${VCPKG_ROOT_DIR}/installed/${TARGET_TRIPLET}/debug/lib/ogg.lib" OGG_LIB_DBG)
 
 vcpkg_configure_cmake(
     SOURCE_PATH ${SOURCE_PATH}
     PREFER_NINJA
-    OPTIONS -DOGG_INCLUDE_DIRS=${OGG_INCLUDE}
-    OPTIONS_RELEASE -DOGG_LIBRARIES=${OGG_LIB_REL}
-    OPTIONS_DEBUG -DOGG_LIBRARIES=${OGG_LIB_DBG}
 )
 
 vcpkg_install_cmake()
+vcpkg_fixup_cmake_targets(
+    CONFIG_PATH lib/cmake/Vorbis
+    TARGET_PATH share/Vorbis
+)
 
 file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/debug/include)
 
 # Handle copyright
-file(COPY ${SOURCE_PATH}/COPYING DESTINATION ${CURRENT_PACKAGES_DIR}/share/libvorbis)
-file(RENAME ${CURRENT_PACKAGES_DIR}/share/libvorbis/COPYING ${CURRENT_PACKAGES_DIR}/share/libvorbis/copyright)
+configure_file(${SOURCE_PATH}/COPYING ${CURRENT_PACKAGES_DIR}/share/${PORT}/copyright COPYONLY)
 
-vcpkg_copy_pdbs()
+vcpkg_copy_pdbs() 

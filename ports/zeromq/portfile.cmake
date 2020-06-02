@@ -1,75 +1,71 @@
-set(ZEROMQ_VERSION 4.2.2)
-set(ZEROMQ_HASH 4069813374d4e8d4c0f8debbe85472d0bd24cf644fb1bce748920eadffb81c429d28f523ef424df84fcaa7082b984fab8da57192802585811d37cff066f4e40c)
-
 include(vcpkg_common_functions)
-set(SOURCE_PATH ${CURRENT_BUILDTREES_DIR}/src/libzmq-${ZEROMQ_VERSION})
-vcpkg_download_distfile(ARCHIVE
-    URLS "https://github.com/zeromq/libzmq/archive/v${ZEROMQ_VERSION}.tar.gz"
-    FILENAME "libzmq-${ZEROMQ_VERSION}.tar.gz"
-    SHA512 ${ZEROMQ_HASH}
+
+vcpkg_from_github(
+    OUT_SOURCE_PATH SOURCE_PATH
+    REPO zeromq/libzmq
+    REF 8d34332ff2301607df0fc9971a2fbe903c0feb7c
+    SHA512 8b3a9b6c4e5236353672b6deb64c94ac79deb116962405f01fe36e2fd8ddc48ec65d88ffc06746ce2e13c93eaeb04e4ba73de8f9d6f2a57a73111765d5ba8ad7
+    HEAD_REF master
 )
-vcpkg_extract_source_archive(${ARCHIVE})
 
-# Map from triplet "x86" to "win32" as used in the vcxproj file.
-if (TRIPLET_SYSTEM_ARCH MATCHES "x86")
-    set(MSBUILD_PLATFORM "Win32")
-else ()
-    set(MSBUILD_PLATFORM ${TRIPLET_SYSTEM_ARCH})
-endif()
+string(COMPARE EQUAL "${VCPKG_LIBRARY_LINKAGE}" "static" BUILD_STATIC)
+string(COMPARE EQUAL "${VCPKG_LIBRARY_LINKAGE}" "dynamic" BUILD_SHARED)
 
-if(VCPKG_PLATFORM_TOOLSET MATCHES "v141")
-  set(MSVS_VERSION 2017)
-else()
-  set(MSVS_VERSION 2015)
-endif()
-
-if(VCPKG_LIBRARY_LINKAGE STREQUAL dynamic)
-    vcpkg_build_msbuild(
-        PROJECT_PATH ${SOURCE_PATH}/builds/msvc/vs${MSVS_VERSION}/libzmq/libzmq.vcxproj
-        RELEASE_CONFIGURATION ReleaseDLL
-        DEBUG_CONFIGURATION DebugDLL
-    )
-    file(INSTALL
-        ${SOURCE_PATH}/bin/${MSBUILD_PLATFORM}/Debug/${VCPKG_PLATFORM_TOOLSET}/dynamic/libzmq.dll
-        DESTINATION ${CURRENT_PACKAGES_DIR}/debug/bin
-    )
-    file(INSTALL
-        ${SOURCE_PATH}/bin/${MSBUILD_PLATFORM}/Release/${VCPKG_PLATFORM_TOOLSET}/dynamic/libzmq.dll
-        DESTINATION ${CURRENT_PACKAGES_DIR}/bin
-    )
-    file(INSTALL
-        ${SOURCE_PATH}/bin/${MSBUILD_PLATFORM}/Debug/${VCPKG_PLATFORM_TOOLSET}/dynamic/libzmq.lib
-        DESTINATION ${CURRENT_PACKAGES_DIR}/debug/lib
-    )
-    file(INSTALL
-        ${SOURCE_PATH}/bin/${MSBUILD_PLATFORM}/Release/${VCPKG_PLATFORM_TOOLSET}/dynamic/libzmq.lib
-        DESTINATION ${CURRENT_PACKAGES_DIR}/lib
-    )
-    vcpkg_copy_pdbs()
-
-else()
-    vcpkg_build_msbuild(
-        PROJECT_PATH ${SOURCE_PATH}/builds/msvc/vs${MSVS_VERSION}/libzmq/libzmq.vcxproj
-        RELEASE_CONFIGURATION ReleaseLIB
-        DEBUG_CONFIGURATION DebugLIB
-    )
-    file(INSTALL
-        ${SOURCE_PATH}/bin/${MSBUILD_PLATFORM}/Debug/${VCPKG_PLATFORM_TOOLSET}/static/libzmq.lib
-        DESTINATION ${CURRENT_PACKAGES_DIR}/debug/lib
-    )
-    file(INSTALL
-        ${SOURCE_PATH}/bin/${MSBUILD_PLATFORM}/Release/${VCPKG_PLATFORM_TOOLSET}/static/libzmq.lib
-        DESTINATION ${CURRENT_PACKAGES_DIR}/lib
-    )
-endif()
-
-
-file(INSTALL
-    ${SOURCE_PATH}/include/
-    DESTINATION ${CURRENT_PACKAGES_DIR}/include
+vcpkg_check_features(
+    OUT_FEATURE_OPTIONS FEATURE_OPTIONS
+    FEATURES
+        sodium WITH_LIBSODIUM
+    INVERTED_FEATURES
+        websockets-sha1 DISABLE_WS
 )
+
+vcpkg_configure_cmake(
+    SOURCE_PATH ${SOURCE_PATH}
+    PREFER_NINJA
+    OPTIONS
+        -DZMQ_BUILD_TESTS=OFF
+        -DPOLLER=select
+        -DBUILD_STATIC=${BUILD_STATIC}
+        -DBUILD_SHARED=${BUILD_SHARED}
+        -DWITH_PERF_TOOL=OFF
+        -DWITH_DOCS=OFF
+        -DWITH_NSS=OFF
+        ${FEATURE_OPTIONS}
+    OPTIONS_DEBUG
+        "-DCMAKE_PDB_OUTPUT_DIRECTORY=${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-dbg"
+)
+
+vcpkg_install_cmake()
+
+vcpkg_copy_pdbs()
+
+if(EXISTS ${CURRENT_PACKAGES_DIR}/CMake)
+    vcpkg_fixup_cmake_targets(CONFIG_PATH CMake)
+endif()
+if(EXISTS ${CURRENT_PACKAGES_DIR}/share/cmake/ZeroMQ)
+    vcpkg_fixup_cmake_targets(CONFIG_PATH share/cmake/ZeroMQ)
+endif()
+
+file(COPY
+    ${CMAKE_CURRENT_LIST_DIR}/vcpkg-cmake-wrapper.cmake
+    DESTINATION ${CURRENT_PACKAGES_DIR}/share/${PORT}
+)
+
+if(VCPKG_LIBRARY_LINKAGE STREQUAL "static")
+    vcpkg_replace_string(${CURRENT_PACKAGES_DIR}/include/zmq.h
+        "defined ZMQ_STATIC"
+        "1 //defined ZMQ_STATIC"
+    )
+endif()
+
+if(VCPKG_LIBRARY_LINKAGE STREQUAL "static")
+    file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/bin ${CURRENT_PACKAGES_DIR}/debug/bin)
+endif()
 
 # Handle copyright
-file(COPY ${SOURCE_PATH}/COPYING DESTINATION ${CURRENT_PACKAGES_DIR}/share/zeromq)
-file(RENAME ${CURRENT_PACKAGES_DIR}/share/zeromq/COPYING ${CURRENT_PACKAGES_DIR}/share/zeromq/copyright)
+file(RENAME ${CURRENT_PACKAGES_DIR}/share/zmq/COPYING.LESSER.txt ${CURRENT_PACKAGES_DIR}/share/zeromq/copyright)
 
+file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/debug/include ${CURRENT_PACKAGES_DIR}/debug/share ${CURRENT_PACKAGES_DIR}/share/zmq)
+
+# CMake integration test
+vcpkg_test_cmake(PACKAGE_NAME ZeroMQ)

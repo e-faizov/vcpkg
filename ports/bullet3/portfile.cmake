@@ -1,16 +1,24 @@
-include(vcpkg_common_functions)
-set(SOURCE_PATH ${CURRENT_BUILDTREES_DIR}/src/bullet3-2.86.1)
-vcpkg_download_distfile(ARCHIVE
-    URLS "https://github.com/bulletphysics/bullet3/archive/2.86.1.zip"
-    FILENAME "bullet3-2.86.1.zip"
-    SHA512 96c67bed63db4b7d46196cebda57b80543ea37bd19f013adcfe19ee6c2c3319ed007bcd1ebbe345d8c75b7e80588f4a7d85cb6a07e1a5eea759d97ce4d94f972
+vcpkg_fail_port_install(ON_ARCH "arm" "arm64" ON_TARGET "UWP")
+
+vcpkg_check_linkage(ONLY_STATIC_LIBRARY)
+
+vcpkg_from_github(
+    OUT_SOURCE_PATH SOURCE_PATH
+    REPO bulletphysics/bullet3
+    REF 2.89
+    SHA512 3c4ba6a3b3623ef44dd4a23e0bc2e90dec1f2b7af463edcb886e110feac1dfb4a91945f0ed640052cac228318539e275976d37238102fb10a0f78aef065a730b
+    HEAD_REF master
+    PATCHES cmake-fix.patch
 )
-vcpkg_extract_source_archive(${ARCHIVE})
+
+vcpkg_check_features(OUT_FEATURE_OPTIONS FEATURE_OPTIONS
+    multithreading       BULLET2_MULTITHREADING
+)
 
 vcpkg_configure_cmake(
     SOURCE_PATH ${SOURCE_PATH}
+    PREFER_NINJA
     OPTIONS
-        -DCMAKE_WINDOWS_EXPORT_ALL_SYMBOLS=ON
         -DUSE_MSVC_RUNTIME_LIBRARY_DLL=ON
         -DBUILD_DEMOS=OFF
         -DBUILD_CPU_DEMOS=OFF
@@ -18,18 +26,20 @@ vcpkg_configure_cmake(
         -DBUILD_BULLET3=OFF
         -DBUILD_EXTRAS=OFF
         -DBUILD_UNIT_TESTS=OFF
-        -DBUILD_SHARED_LIBS=ON
         -DINSTALL_LIBS=ON
+        ${FEATURE_OPTIONS}
 )
 
-vcpkg_build_cmake()
 vcpkg_install_cmake()
 
-file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/lib/cmake)
-file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/debug/lib/cmake)
-file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/debug/include)
+vcpkg_fixup_cmake_targets(CONFIG_PATH "share/bullet3")
 
-file(COPY ${SOURCE_PATH}/LICENSE.txt DESTINATION ${CURRENT_PACKAGES_DIR}/share/bullet3)
-file(RENAME ${CURRENT_PACKAGES_DIR}/share/bullet3/LICENSE.txt ${CURRENT_PACKAGES_DIR}/share/bullet3/copyright)
+# Clean up unneeded files
+file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/debug/share)
+file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/debug/include)
+file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/include/bullet/BulletInverseDynamics/details)
 
 vcpkg_copy_pdbs()
+
+file(INSTALL ${CMAKE_CURRENT_LIST_DIR}/usage DESTINATION ${CURRENT_PACKAGES_DIR}/share/${PORT})
+file(INSTALL ${SOURCE_PATH}/LICENSE.txt DESTINATION ${CURRENT_PACKAGES_DIR}/share/${PORT} RENAME copyright)

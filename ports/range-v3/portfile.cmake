@@ -1,28 +1,27 @@
-#header-only library
-include(vcpkg_common_functions)
-
-# set(SOURCE_PATH ${CURRENT_BUILDTREES_DIR}/src/range-v3-6eb5c831ffe12cd5cb96390dbe917ca1b248772d)
-# vcpkg_download_distfile(ARCHIVE
-#     URLS "https://github.com/ericniebler/range-v3/archive/6eb5c831ffe12cd5cb96390dbe917ca1b248772d.zip"
-#     FILENAME "range-v3-6eb5c831ffe12cd5cb96390dbe917ca1b248772d.zip"
-#     SHA512 2605af46c2c049f66dc982b1c4e506a8f115d47cc6c61a80f08921c667e52ad3097c485280ee43711c84b84a1490929e085b89cf9ad4c83b93222315210e92aa
-# )
-# vcpkg_download_distfile(DIFF
-#     URLS "https://github.com/Microsoft/Range-V3-VS2015/compare/fork_base...00ed689bac7a9dcd8601dbde382758675516799d.diff"
-#     FILENAME "range-v3-fork_base_to_00ed689bac7a9dcd8601dbde382758675516799d.diff"
-#     SHA512 6158cd9ee1f5957294a26dc780c881839e0bae8610688a618cd11d47df34d5e543fa09ac9a3b33d4a65af8eceae0a6a3055621206c291ef75f982e7915daf91a
-# )
-# vcpkg_extract_source_archive(${ARCHIVE})
-
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
-    REPO Microsoft/Range-V3-VS2015
-    REF 2695c779d52717b635e97352fed6b75d32eba7a4
-    SHA512 a1dad795b15c8491963f75fb58097dd290203406038cb2790c66b7ebd854a42043a92cfa2fed30c125529c3aa8d0cfc05cf1d149c84e96eb1f865857ad87adeb
+    REPO ericniebler/range-v3
+    REF 2e0591c57fce2aca6073ad6e4fdc50d841827864
+    SHA512 381d3f7cf7832f51854e5f067a3e6a7df143921067540482d45ce115c792634113f5dfb3dcfb7a69bb5c879d1591c50610177bfe795cd97993130adedcb118d3
     HEAD_REF master
 )
 
-file(COPY ${SOURCE_PATH}/LICENSE.txt DESTINATION ${CURRENT_PACKAGES_DIR}/share/range-v3)
-file(RENAME ${CURRENT_PACKAGES_DIR}/share/range-v3/LICENSE.txt ${CURRENT_PACKAGES_DIR}/share/range-v3/copyright)
-file(INSTALL ${SOURCE_PATH}/include DESTINATION ${CURRENT_PACKAGES_DIR} FILES_MATCHING PATTERN "*.hpp")
+vcpkg_configure_cmake(
+    SOURCE_PATH ${SOURCE_PATH}
+    PREFER_NINJA
+    OPTIONS
+        -DRANGE_V3_TESTS=OFF
+        -DRANGE_V3_EXAMPLES=OFF
+        -DRANGE_V3_PERF=OFF
+        -DRANGE_V3_HEADER_CHECKS=OFF
+)
+
+vcpkg_install_cmake()
+
+vcpkg_fixup_cmake_targets(CONFIG_PATH lib/cmake/range-v3)
+
+file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/debug ${CURRENT_PACKAGES_DIR}/lib)
+
 vcpkg_copy_pdbs()
+
+file(INSTALL ${SOURCE_PATH}/LICENSE.txt DESTINATION ${CURRENT_PACKAGES_DIR}/share/${PORT} RENAME copyright)

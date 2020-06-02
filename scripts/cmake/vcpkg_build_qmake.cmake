@@ -1,32 +1,73 @@
 #.rst:
 # .. command:: vcpkg_build_qmake
 #
-#  Build a qmake-based project, previously configured using vcpkg_configure_qmake . 
-#  As the CONFIG qmake option is assumed to be "debug_and_release" (the default value on Windows, see [1]),
-#  both the debug and release libraries are build in the same build tree. 
+#  Build a qmake-based project, previously configured using vcpkg_configure_qmake.
 #
 #  ::
 #  vcpkg_build_qmake()
 #
-#
-# [1] : http://doc.qt.io/qt-5/qmake-variable-reference.html
-
 function(vcpkg_build_qmake)
-    vcpkg_find_acquire_program(JOM)
+    cmake_parse_arguments(_csc "SKIP_MAKEFILES" "BUILD_LOGNAME" "TARGETS;RELEASE_TARGETS;DEBUG_TARGETS" ${ARGN})
 
-    # Make sure that the linker finds the libraries used 
-    set(ENV_LIB_BACKUP ENV{LIB})
-    set(ENV{LIB} "${CURRENT_INSTALLED_DIR}/lib;${CURRENT_INSTALLED_DIR}/debug/lib;$ENV{LIB}")
-    
-    message(STATUS "Package ${TARGET_TRIPLET}")
-    vcpkg_execute_required_process_repeat(
-        COUNT 2
-        COMMAND ${JOM}
-        WORKING_DIRECTORY ${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}
-        LOGNAME package-${TARGET_TRIPLET}
-    )
-    message(STATUS "Package ${TARGET_TRIPLET} done")
-    
-    # Restore the original value of ENV{LIB}
-    set(ENV{LIB} ENV_LIB_BACKUP)
+    if(CMAKE_HOST_WIN32)
+        vcpkg_find_acquire_program(JOM)
+        set(INVOKE "${JOM}")
+    else()
+        find_program(MAKE make)
+        set(INVOKE "${MAKE}")
+    endif()
+
+    # Make sure that the linker finds the libraries used
+    set(ENV_PATH_BACKUP "$ENV{PATH}")
+
+    file(TO_NATIVE_PATH "${CURRENT_INSTALLED_DIR}" NATIVE_INSTALLED_DIR)
+
+    if(NOT _csc_BUILD_LOGNAME)
+        set(_csc_BUILD_LOGNAME build)
+    endif()
+
+    function(run_jom TARGETS LOG_PREFIX LOG_SUFFIX)
+        message(STATUS "Package ${LOG_PREFIX}-${TARGET_TRIPLET}-${LOG_SUFFIX}")
+        vcpkg_execute_required_process(
+            COMMAND ${INVOKE} -j ${VCPKG_CONCURRENCY} ${TARGETS}
+            WORKING_DIRECTORY ${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-${LOG_SUFFIX}
+            LOGNAME package-${LOG_PREFIX}-${TARGET_TRIPLET}-${LOG_SUFFIX}
+        )
+    endfunction()
+
+    # This fixes issues on machines with default codepages that are not ASCII compatible, such as some CJK encodings
+    set(ENV_CL_BACKUP "$ENV{_CL_}")
+    set(ENV{_CL_} "/utf-8")
+
+    #Replace with VCPKG variables if PR #7733 is merged
+    unset(BUILDTYPES)
+    if(NOT DEFINED VCPKG_BUILD_TYPE OR VCPKG_BUILD_TYPE STREQUAL "debug")
+        set(_buildname "DEBUG")
+        list(APPEND BUILDTYPES ${_buildname})
+        set(_short_name_${_buildname} "dbg")
+        set(_path_suffix_${_buildname} "/debug")
+    endif()
+    if(NOT DEFINED VCPKG_BUILD_TYPE OR VCPKG_BUILD_TYPE STREQUAL "release")
+        set(_buildname "RELEASE")
+        list(APPEND BUILDTYPES ${_buildname})
+        set(_short_name_${_buildname} "rel")
+        set(_path_suffix_${_buildname} "")
+    endif()
+    unset(_buildname)
+
+    foreach(_buildname ${BUILDTYPES})
+        set(_BUILD_PREFIX "${_path_suffix_${_buildname}}")
+        vcpkg_add_to_path(PREPEND "${CURRENT_INSTALLED_DIR}${_BUILD_PREFIX}/bin")
+        vcpkg_add_to_path(PREPEND "${CURRENT_INSTALLED_DIR}${_BUILD_PREFIX}/lib")
+        list(APPEND _csc_${_buildname}_TARGETS ${_csc_TARGETS})
+        if(NOT _csc_SKIP_MAKEFILES)
+            run_jom(qmake_all makefiles ${_short_name_${_buildname}})
+        endif()
+        run_jom("${_csc_${_buildname}_TARGETS}" ${_csc_BUILD_LOGNAME} ${_short_name_${_buildname}})
+        unset(_BUILD_PREFIX)
+    endforeach()
+
+    # Restore the original value of ENV{PATH}
+    set(ENV{PATH} "${ENV_PATH_BACKUP}")
+    set(ENV{_CL_} "${ENV_CL_BACKUP}")
 endfunction()

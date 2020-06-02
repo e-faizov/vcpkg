@@ -1,17 +1,23 @@
-include(vcpkg_common_functions)
+# Patches that are independent of --head flag
+set(_PATCHES 001-tools-path.patch)
+
+# Patches that are only applied to --head builds
+if(VCPKG_USE_HEAD_VERSION)
+    list(APPEND _PATCHES 002-sdl-includes-head.patch)
+
+# Patches that are only applied to release builds
+else()
+    list(APPEND _PATCHES 002-sdl-includes.patch)
+endif()
+
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO mosra/magnum
-    REF ed7eac0b42a598dff8984830e7f943dd6af07deb
-    SHA512 843e209b82b4f6f7c3f9612aec2641a28cb09361eefefe435bb7d2c06d0e4df65b6b9adf5893222cf31ddc3ccec967eb343da1da6180e9fbfef1b26234e145d5
+    REF v2019.10
+    SHA512 b1c991199fa9b09b780ea822de4b2251c70fcc95e7f28bb14a6184861d92fcd4c6e6fe43ad21acfbfd191cd46e79bf58b867240ad6f706b07cd1fbe145b8eaff
     HEAD_REF master
-)
-
-vcpkg_apply_patches(
-    SOURCE_PATH ${SOURCE_PATH}
     PATCHES
-        ${CMAKE_CURRENT_LIST_DIR}/001-sdl-includes.patch 
-        ${CMAKE_CURRENT_LIST_DIR}/002-tools-path.patch
+        ${_PATCHES}
 )
 
 if(VCPKG_LIBRARY_LINKAGE STREQUAL static)
@@ -22,49 +28,93 @@ else()
     set(BUILD_PLUGINS_STATIC 0)
 endif()
 
+vcpkg_check_features(OUT_FEATURE_OPTIONS FEATURE_OPTIONS
+    al-info                     WITH_AL_INFO
+    anyimageimporter            WITH_ANYIMAGEIMPORTER
+    anyaudioimporter            WITH_ANYAUDIOIMPORTER
+    anyimageconverter           WITH_ANYIMAGECONVERTER
+    anysceneimporter            WITH_ANYSCENEIMPORTER
+    audio                       WITH_AUDIO
+    debugtools                  WITH_DEBUGTOOLS
+    distancefieldconverter      WITH_DISTANCEFIELDCONVERTER
+    fontconverter               WITH_FONTCONVERTER
+    gl                          WITH_GL
+    gl-info                     WITH_GL_INFO
+    glfwapplication             WITH_GLFWAPPLICATION
+    imageconverter              WITH_IMAGECONVERTER
+    magnumfont                  WITH_MAGNUMFONT
+    magnumfontconverter         WITH_MAGNUMFONTCONVERTER
+    meshtools                   WITH_MESHTOOLS
+    objimporter                 WITH_OBJIMPORTER
+    tgaimageconverter           WITH_TGAIMAGECONVERTER
+    opengltester                WITH_OPENGLTESTER
+    primitives                  WITH_PRIMITIVES
+    sdl2application             WITH_SDL2APPLICATION
+    scenegraph                  WITH_SCENEGRAPH
+    shaders                     WITH_SHADERS
+    text                        WITH_TEXT
+    texturetools                WITH_TEXTURETOOLS
+    tgaimporter                 WITH_TGAIMPORTER
+    trade                       WITH_TRADE
+    wavaudioimporter            WITH_WAVAUDIOIMPORTER
+    windowlesswglapplication    WITH_WINDOWLESSWGLAPPLICATION
+    eglcontext                  WITH_EGLCONTEXT
+    cglcontext                  WITH_CGLCONTEXT
+    glxcontext                  WITH_GLXCONTEXT
+    wglcontext                  WITH_WGLCONTEXT
+    windowlesseglapplication    WITH_WINDOWLESSEGLAPPLICATION
+    windowlessglxapplication    WITH_WINDOWLESSGLXAPPLICATION
+)
+
 vcpkg_configure_cmake(
     SOURCE_PATH ${SOURCE_PATH}
     PREFER_NINJA # Disable this option if project cannot be built with Ninja
     OPTIONS
-        -DWITH_SDL2APPLICATION=ON
-        -DWITH_WINDOWLESSWGLAPPLICATION=ON
-        -DWITH_WGLCONTEXT=ON
-        -DWITH_OPENGLTESTER=ON
-        -DWITH_AUDIO=ON
-        -DWITH_WAVAUDIOIMPORTER=ON
-        -DWITH_MAGNUMFONT=ON
-        -DWITH_MAGNUMFONTCONVERTER=ON
-        -DWITH_OBJIMPORTER=ON
-        -DWITH_TGAIMPORTER=ON
-        -DWITH_DISTANCEFIELDCONVERTER=ON
-        -DWITH_FONTCONVERTER=ON
-        -DWITH_TGAIMAGECONVERTER=ON
+        ${FEATURE_OPTIONS}
         -DBUILD_STATIC=${BUILD_STATIC}
         -DBUILD_PLUGINS_STATIC=${BUILD_PLUGINS_STATIC}
         -DMAGNUM_PLUGINS_DEBUG_DIR=${CURRENT_INSTALLED_DIR}/debug/bin/magnum-d
         -DMAGNUM_PLUGINS_RELEASE_DIR=${CURRENT_INSTALLED_DIR}/bin/magnum
-        --trace
 )
 
 vcpkg_install_cmake()
 
+vcpkg_copy_pdbs()
+
 # Drop a copy of tools
-file(COPY ${CURRENT_PACKAGES_DIR}/bin/magnum-distancefieldconverter.exe DESTINATION ${CURRENT_PACKAGES_DIR}/tools/magnum)
-file(COPY ${CURRENT_PACKAGES_DIR}/bin/magnum-fontconverter.exe DESTINATION ${CURRENT_PACKAGES_DIR}/tools/magnum)
+if(NOT VCPKG_CMAKE_SYSTEM_NAME)
+    set(EXE_SUFFIX .exe)
+else()
+    set(EXE_SUFFIX)
+endif()
+
+if(distancefieldconverter IN_LIST FEATURES)
+    file(COPY ${CURRENT_PACKAGES_DIR}/bin/magnum-distancefieldconverter${EXE_SUFFIX} DESTINATION ${CURRENT_PACKAGES_DIR}/tools/magnum)
+endif()
+if(fontconverter IN_LIST FEATURES)
+    file(COPY ${CURRENT_PACKAGES_DIR}/bin/magnum-fontconverter${EXE_SUFFIX} DESTINATION ${CURRENT_PACKAGES_DIR}/tools/magnum)
+endif()
+if(al-info IN_LIST FEATURES)
+    file(COPY ${CURRENT_PACKAGES_DIR}/bin/magnum-al-info${EXE_SUFFIX} DESTINATION ${CURRENT_PACKAGES_DIR}/tools/magnum)
+endif()
+if(magnuminfo IN_LIST FEATURES)
+    file(COPY ${CURRENT_PACKAGES_DIR}/bin/magnum-info${EXE_SUFFIX} DESTINATION ${CURRENT_PACKAGES_DIR}/tools/magnum)
+endif()
 
 # Tools require dlls
 vcpkg_copy_tool_dependencies(${CURRENT_PACKAGES_DIR}/tools/magnum)
 
-file(GLOB_RECURSE TO_REMOVE 
-   ${CURRENT_PACKAGES_DIR}/bin/*.exe
-   ${CURRENT_PACKAGES_DIR}/debug/bin/*.exe)
-file(REMOVE ${TO_REMOVE})
-
+file(GLOB_RECURSE TO_REMOVE
+   ${CURRENT_PACKAGES_DIR}/bin/*${EXE_SUFFIX}
+   ${CURRENT_PACKAGES_DIR}/debug/bin/*${EXE_SUFFIX})
+if(TO_REMOVE)
+    file(REMOVE ${TO_REMOVE})
+endif()
 
 file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/debug/include)
 file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/debug/share)
 
-if(VCPKG_LIBRARY_LINKAGE STREQUAL static)
+if(VCPKG_LIBRARY_LINKAGE STREQUAL "static")
    file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/bin)
    file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/debug/bin)
    # move plugin libs to conventional place
@@ -75,14 +125,8 @@ if(VCPKG_LIBRARY_LINKAGE STREQUAL static)
    file(COPY ${LIB_TO_MOVE_DBG} DESTINATION ${CURRENT_PACKAGES_DIR}/debug/lib)
    file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/debug/lib/magnum)
 else()
-   # remove headers and libs for plugins
-   file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/include/MagnumPlugins)
-   file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/lib/magnum)
-   file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/debug/lib/magnum-d)
+   file(COPY ${CMAKE_CURRENT_LIST_DIR}/magnumdeploy.ps1 DESTINATION ${CURRENT_PACKAGES_DIR}/bin/magnum)
+   file(COPY ${CMAKE_CURRENT_LIST_DIR}/magnumdeploy.ps1 DESTINATION ${CURRENT_PACKAGES_DIR}/debug/bin/magnum-d)
 endif()
 
-# Handle copyright
-file(COPY ${SOURCE_PATH}/COPYING DESTINATION ${CURRENT_PACKAGES_DIR}/share/magnum)
-file(RENAME ${CURRENT_PACKAGES_DIR}/share/magnum/COPYING ${CURRENT_PACKAGES_DIR}/share/magnum/copyright)
-
-vcpkg_copy_pdbs()
+file(INSTALL ${SOURCE_PATH}/COPYING DESTINATION ${CURRENT_PACKAGES_DIR}/share/${PORT} RENAME copyright)

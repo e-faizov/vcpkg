@@ -1,35 +1,26 @@
-# Common Ambient Variables:
-#   CURRENT_BUILDTREES_DIR    = ${VCPKG_ROOT_DIR}\buildtrees\${PORT}
-#   CURRENT_PACKAGES_DIR      = ${VCPKG_ROOT_DIR}\packages\${PORT}_${TARGET_TRIPLET}
-#   CURRENT_PORT DIR          = ${VCPKG_ROOT_DIR}\ports\${PORT}
-#   PORT                      = current port name (zlib, etc)
-#   TARGET_TRIPLET            = current triplet (x86-windows, x64-windows-static, etc)
-#   VCPKG_CRT_LINKAGE         = C runtime linkage type (static, dynamic)
-#   VCPKG_LIBRARY_LINKAGE     = target library linkage type (static, dynamic)
-#   VCPKG_ROOT_DIR            = <C:\path\to\current\vcpkg>
-#   VCPKG_TARGET_ARCHITECTURE = target architecture (x64, x86, arm)
-#
-
 include(vcpkg_common_functions)
-set(SOURCE_PATH ${CURRENT_BUILDTREES_DIR}/src-${TARGET_TRIPLET}/cppunit-1.13.2)
+
+if(NOT VCPKG_TARGET_IS_WINDOWS)
+    message(FATAL_ERROR "\n${PORT} does not support your system, only Windows for now. Please open a ticket issue on github.com/microsoft/vcpkg if necessary\n")
+endif()
+
+set(VERSION 1.14.0)
+if (VCPKG_CRT_LINKAGE STREQUAL static)
+    set(STATIC_PATCH "0001-static-crt-linkage.patch")
+endif()
+
 vcpkg_download_distfile(ARCHIVE
-    URLS "http://dev-www.libreoffice.org/src/cppunit-1.13.2.tar.gz"
-    FILENAME "cppunit-1.13.2.tar.gz"
-    SHA512 8f4be569f321d577cec31931f49f4df143bc94e283605509b6ea50c60690aa91a2aed940e7eebd4b2413a4218f9a6c3978d312d8e587eab040283c6563846ecd
+    URLS "http://dev-www.libreoffice.org/src/cppunit-${VERSION}.tar.gz"
+    FILENAME "cppunit-${VERSION}.tar.gz"
+    SHA512 4ea1da423c6f7ab37e4144689f593396829ce74d43872d6b10709c1ad5fbda4ee945842f7e9803592520ef81ac713e95a3fe130295bf048cd32a605d1959882e
 )
 
-file(REMOVE_RECURSE ${CURRENT_BUILDTREES_DIR}/src-${TARGET_TRIPLET})
-file(MAKE_DIRECTORY ${CURRENT_BUILDTREES_DIR}/src-${TARGET_TRIPLET})
-vcpkg_extract_source_archive(${ARCHIVE} ${CURRENT_BUILDTREES_DIR}/src-${TARGET_TRIPLET})
-
-if (VCPKG_CRT_LINKAGE STREQUAL static)
-    vcpkg_apply_patches(
-        SOURCE_PATH ${SOURCE_PATH}
-        PATCHES
-            # Make sure cppunit static lib uses static CRT linkage
-            ${CMAKE_CURRENT_LIST_DIR}/0001-static-crt-linkage.patch
-    )
-endif()
+vcpkg_extract_source_archive_ex(
+    OUT_SOURCE_PATH SOURCE_PATH
+    ARCHIVE ${ARCHIVE}
+    PATCHES
+        ${STATIC_PATCH}
+)
 
 if (VCPKG_TARGET_ARCHITECTURE MATCHES "x86")
     set(BUILD_ARCH "Win32")
@@ -62,8 +53,6 @@ elseif (VCPKG_LIBRARY_LINKAGE STREQUAL static)
     file(COPY ${SOURCE_PATH}/lib/cppunit.lib DESTINATION ${CURRENT_PACKAGES_DIR}/lib)
 endif()
 
-# Handle copyright
-file(COPY ${SOURCE_PATH}/COPYING DESTINATION ${CURRENT_PACKAGES_DIR}/share/cppunit)
-file(RENAME ${CURRENT_PACKAGES_DIR}/share/cppunit/COPYING ${CURRENT_PACKAGES_DIR}/share/cppunit/copyright)
-
 vcpkg_copy_pdbs()
+
+file(INSTALL ${SOURCE_PATH}/COPYING DESTINATION ${CURRENT_PACKAGES_DIR}/share/cppunit RENAME copyright)

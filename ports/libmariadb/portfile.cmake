@@ -1,70 +1,63 @@
 
-if (EXISTS "${CURRENT_INSTALLED_DIR}/include/mysql/mysql.h")
-	message(FATAL_ERROR "FATAL ERROR: libmysql and libmariadb are incompatible.")
+if (EXISTS "${CURRENT_INSTALLED_DIR}/share/libmysql")
+    message(FATAL_ERROR "FATAL ERROR: libmysql and libmariadb are incompatible.")
 endif()
 
 include(vcpkg_common_functions)
-set(SOURCE_PATH ${CURRENT_BUILDTREES_DIR}/src/mariadb-connector-c-2.3.2)
 
-vcpkg_download_distfile(ARCHIVE
-    URLS "https://github.com/MariaDB/mariadb-connector-c/archive/v2.3.2.tar.gz"
-    FILENAME "mariadb-connector-c-2.3.2.tar.gz"
-    SHA512 f5574756ffce69e3dd15b7f7c14cfd0b4d69e3203ae4b383f05a110918916279ba7c0b9149d0dcb9ec93bbfc0927dfaf88bb40979ba1de710ce148d1fbe033af
+vcpkg_from_github(
+    OUT_SOURCE_PATH SOURCE_PATH
+    REPO MariaDB/mariadb-connector-c
+    REF 8e9c3116105d9a998a60991b7f4ba910d454d4b1 # v3.1.7
+    SHA512 b663effe7794d997c0589a9a20dab6b7359414612e60e3cb43e3fd0ddeae0391bcbc2d816cba4a7438602566ad6781cbf8e18b0062f1d37a2b2bd521af16033c
+    HEAD_REF master
+    PATCHES
+            md.patch
+            disable-test-build.patch
+			fix-InstallPath.patch
 )
-vcpkg_extract_source_archive(${ARCHIVE})
 
 vcpkg_configure_cmake(
     SOURCE_PATH ${SOURCE_PATH}
+    PREFER_NINJA
+    OPTIONS
+        -DWITH_UNITTEST=OFF
+        -DWITH_SSL=OFF
+        -DWITH_CURL=OFF
 )
 
 vcpkg_install_cmake()
 
-# remove debug header
-file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/debug/include)
+if(NOT DEFINED VCPKG_BUILD_TYPE OR VCPKG_BUILD_TYPE STREQUAL "release")
+    # remove debug header
+    file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/debug/include)
+endif()
 
-# fix libmariadb lib & dll directory.
-if (VCPKG_LIBRARY_LINKAGE STREQUAL static)
-	file(RENAME
-		${CURRENT_PACKAGES_DIR}/lib/mariadb/mariadbclient.lib
-		${CURRENT_PACKAGES_DIR}/lib/mariadbclient.lib)		
-	file(RENAME
-		${CURRENT_PACKAGES_DIR}/debug/lib/mariadb/mariadbclient.lib
-		${CURRENT_PACKAGES_DIR}/debug/lib/mariadbclient.lib)
-else()
-	file(MAKE_DIRECTORY
-		${CURRENT_PACKAGES_DIR}/bin
-		${CURRENT_PACKAGES_DIR}/debug/bin)
-	file(RENAME
-		${CURRENT_PACKAGES_DIR}/lib/mariadb/libmariadb.dll
-		${CURRENT_PACKAGES_DIR}/bin/libmariadb.dll)
-	file(RENAME
-		${CURRENT_PACKAGES_DIR}/debug/lib/mariadb/libmariadb.dll
-		${CURRENT_PACKAGES_DIR}/debug/bin/libmariadb.dll)
-	file(RENAME
-		${CURRENT_PACKAGES_DIR}/lib/mariadb/libmariadb.lib
-		${CURRENT_PACKAGES_DIR}/lib/libmariadb.lib)
-	file(RENAME
-		${CURRENT_PACKAGES_DIR}/debug/lib/mariadb/libmariadb.lib
-		${CURRENT_PACKAGES_DIR}/debug/lib/libmariadb.lib)
+if(VCPKG_LIBRARY_LINKAGE STREQUAL static)
+    file(REMOVE_RECURSE ${CURRENT_PACKAGES_DIR}/bin ${CURRENT_PACKAGES_DIR}/debug/bin)
+endif()
+
+if(VCPKG_BUILD_TYPE STREQUAL "debug")
+    # move headers
+    file(RENAME
+        ${CURRENT_PACKAGES_DIR}/debug/include
+        ${CURRENT_PACKAGES_DIR}/include)
 endif()
 
 # remove plugin folder
 file(REMOVE_RECURSE
-	${CURRENT_PACKAGES_DIR}/lib/plugin
-	${CURRENT_PACKAGES_DIR}/debug/lib/plugin
-	${CURRENT_PACKAGES_DIR}/lib/mariadb
-	${CURRENT_PACKAGES_DIR}/debug/lib/mariadb)
+    ${CURRENT_PACKAGES_DIR}/lib/mariadb
+    ${CURRENT_PACKAGES_DIR}/debug/lib/mariadb)
 
 # copy & remove header files
-file(GLOB HEADER_FILES ${CURRENT_PACKAGES_DIR}/include/mariadb/*)
 file(REMOVE
-	${CURRENT_PACKAGES_DIR}/include/mariadb/my_config.h.in
-	${CURRENT_PACKAGES_DIR}/include/mariadb/mysql_version.h.in
-	${CURRENT_PACKAGES_DIR}/include/mariadb/CMakeLists.txt
-	${CURRENT_PACKAGES_DIR}/include/mariadb/Makefile.am)
+    ${CURRENT_PACKAGES_DIR}/include/mariadb/my_config.h.in
+    ${CURRENT_PACKAGES_DIR}/include/mariadb/mysql_version.h.in
+    ${CURRENT_PACKAGES_DIR}/include/mariadb/CMakeLists.txt
+    ${CURRENT_PACKAGES_DIR}/include/mariadb/Makefile.am)
 file(RENAME
-	${CURRENT_PACKAGES_DIR}/include/mariadb
-	${CURRENT_PACKAGES_DIR}/include/mysql)
+    ${CURRENT_PACKAGES_DIR}/include/mariadb
+    ${CURRENT_PACKAGES_DIR}/include/mysql)
 
 # copy license file
 file(COPY ${SOURCE_PATH}/COPYING.LIB DESTINATION ${CURRENT_PACKAGES_DIR}/share/libmariadb)
